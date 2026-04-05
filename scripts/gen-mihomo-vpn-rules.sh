@@ -1,4 +1,0 @@
-﻿#!/usr/bin/env bash\n# 鐢熸垚 mihomo 鎸?VPN 婧愬湴鍧€鍒嗘祦瑙勫垯锛?0.0.2.(n+1) 涓?10.0.3.(n+1) -> Name{n}\n# 10.0.2.x = IKEv2 铏氭嫙鍦板潃姹狅紱10.0.3.x = PPTP\n# 鐢ㄦ硶: bash scripts/gen-mihomo-vpn-rules.sh > files/mihomo-vpn-rules.fragment.yaml\nset -euo pipefail\ncat << 'HDR'\n# 鐢?scripts/gen-mihomo-vpn-rules.sh 鐢熸垚锛涘悎骞跺埌 config.yaml 鐨?rules: 涓紝\n# 鏀惧湪 MATCH / FINAL 绛夊厹搴曡鍒欎箣鍓嶃€?
-# 闇€鍦?proxies锛堟垨 proxy-providers锛変腑鎻愪緵 Name1 .. Name200銆?
-# VPN 娴侀噺闇€缁忔湰鏈鸿浆鍙戜笖鐢?mihomo 浠?TUN/閫忔槑浠ｇ悊绛夋柟寮忔帴绠★紝SRC-IP 瑙勫垯鎵嶄細鐢熸晥銆?
-HDR\nfor i in $(seq 1 200); do\n  o=$((i + 1))\n  echo "- SRC-IP-CIDR,10.0.2.${o}/32,Name${i}"\n  echo "- SRC-IP-CIDR,10.0.3.${o}/32,Name${i}"\ndone\n

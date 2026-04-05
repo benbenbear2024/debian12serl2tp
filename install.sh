@@ -94,7 +94,7 @@ apt-get install -y net-tools iptables-persistent
 # 安装 accel-ppp
 echo "安装 accel-ppp..."
 # 安装编译依赖
-apt-get install -y build-essential git cmake libpcre2-dev libssl-dev liblua5.2-dev libcurl4-openssl-dev
+apt-get install -y build-essential git cmake libpcre2-dev libssl-dev libnl-3-dev libnl-genl-3-dev
 
 # 克隆 accel-ppp 源码
 echo "克隆 accel-ppp 源码..."
@@ -110,10 +110,15 @@ echo "编译 accel-ppp..."
 cd /tmp/accel-ppp
 mkdir -p build
 cd build
-cmake .. -DBUILD_IPOE_DRIVER=OFF -DBUILD_VLAN_MON_DRIVER=OFF
+# 禁用 RADIUS 支持，使用 chap-secrets
+cmake -DBUILD_DRIVER=TRUE -DRADIUS=FALSE ..
 make -j$(nproc)
 echo "安装 accel-ppp..."
 make install
+
+# 创建日志目录
+mkdir -p /var/log/accel-ppp
+chown nobody:nogroup /var/log/accel-ppp
 
 # 创建系统服务
 echo "创建 accel-ppp 系统服务..."
@@ -141,50 +146,39 @@ echo "配置 accel-ppp..."
 mkdir -p /usr/local/etc/accel-ppp
 cat > /usr/local/etc/accel-ppp/accel-ppp.conf << 'EOF'
 [modules]
-log_file
+log_syslog
 pptp
 l2tp
 auth_mschap_v2
 chap-secrets
-ippool
 
 [core]
-thread-count=4
 log-error=/var/log/accel-ppp/core.log
-
-[log]
-file=/var/log/accel-ppp/accel-ppp.log
-level=5
+thread-count=4
 
 [ppp]
 verbose=1
 auth=mschapv2
 mppe=require
-ccp=0
 lcp-echo-interval=30
 lcp-echo-failure=3
 
-[client-ip-range]
-# 全局IP池，解决启动报错关键
-10.0.10.1-10.0.10.200
-
 [pptp]
 enable=1
+ip-range=10.0.10.1-10.0.10.200
 local-ip=10.0.10.254
 
 [l2tp]
 enable=1
+ip-range=10.0.10.1-10.0.10.200
 local-ip=10.0.10.254
 
 [dns]
-server=8.8.8.8
-server=1.1.1.1
+8.8.8.8
+1.1.1.1
 
 [chap-secrets]
 file=/etc/ppp/chap-secrets
-
-[ip-pool]
-gw-ip=10.0.10.254
 EOF
 
 # 生成用户账号和静态 IP 分配配置
@@ -195,15 +189,13 @@ echo "生成用户账号和静态 IP 分配配置..."
 
 # 批量生成账号密码+固定IP
 for i in $(seq 1 200); do
-  echo "user$i * 88888888 * 10.0.10.$i" >> "$CHAP"
+  echo "user$i * 88888888 10.0.10.$i" >> "$CHAP"
 done
 
 chmod 600 "$CHAP"
 echo "用户账号生成完成"
 echo "查看前 10 个用户账号:"
 head -n 10 "$CHAP"
-
-# 不需要单独的静态 IP 配置文件，因为已经在 chap-secrets 中指定了固定 IP
 
 # 安装并配置 strongSwan（IPsec 支持）
 echo "安装并配置 strongSwan（IPsec 支持）..."
