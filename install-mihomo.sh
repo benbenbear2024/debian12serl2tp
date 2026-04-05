@@ -216,19 +216,11 @@ EOF
 }
 
 start_service() {
-    log_info "启动 Mihomo 服务..."
+    log_info "设置 Mihomo 服务开机启动..."
     systemctl enable mihomo
-    systemctl start mihomo
-    
-    sleep 2
-    
-    if systemctl is-active --quiet mihomo; then
-        log_info "Mihomo 服务启动成功"
-    else
-        log_error "Mihomo 服务启动失败"
-        systemctl status mihomo --no-pager
-        exit 1
-    fi
+    log_info "Mihomo 服务已设置为开机启动"
+    log_info "注意：由于尚未配置 mihomo，服务未立即启动"
+    log_info "请在配置 ${CONFIG_DIR}/config.yaml 后重启服务"
 }
 
 check_installation() {
@@ -249,11 +241,7 @@ check_installation() {
         exit 1
     fi
     
-    if systemctl is-active --quiet mihomo; then
-        log_info "服务状态: 运行中"
-    else
-        log_warn "服务状态: 未运行"
-    fi
+    log_info "服务状态: 已设置开机启动（未运行）"
 }
 
 print_info() {
@@ -279,10 +267,11 @@ print_info() {
     echo "控制面板: http://127.0.0.1:9090"
     echo "代理端口: 7890 (HTTP/SOCKS5)"
     echo ""
-    echo "注意事项:"
-    echo "  1. 请编辑配置文件添加代理节点"
-    echo "  2. 配置文件路径: ${CONFIG_DIR}/config.yaml"
-    echo "  3. 修改配置后需重启服务: systemctl restart mihomo"
+    echo "重要提示:"
+    echo "  1. 服务已设置为开机启动，但未立即运行"
+    echo "  2. 请先编辑配置文件添加代理节点"
+    echo "  3. 配置完成后执行: systemctl start mihomo"
+    echo "  4. 重启服务器后服务会自动启动"
     echo ""
 }
 
