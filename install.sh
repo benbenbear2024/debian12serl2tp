@@ -94,7 +94,7 @@ apt-get install -y net-tools iptables-persistent
 # 安装 accel-ppp
 echo "安装 accel-ppp..."
 # 安装编译依赖
-apt-get install -y build-essential git cmake libpcre3-dev libssl-dev liblua5.2-dev libcurl4-openssl-dev
+apt-get install -y build-essential git cmake libpcre2-dev libssl-dev liblua5.2-dev libcurl4-openssl-dev
 
 # 克隆 accel-ppp 源码
 echo "克隆 accel-ppp 源码..."
