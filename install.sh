@@ -98,6 +98,11 @@ apt-get install -y build-essential git cmake libpcre2-dev libssl-dev liblua5.2-d
 
 # 克隆 accel-ppp 源码
 echo "克隆 accel-ppp 源码..."
+# 清理已存在的目录
+if [ -d "/tmp/accel-ppp" ]; then
+  echo "清理已存在的 accel-ppp 目录..."
+  rm -rf /tmp/accel-ppp
+fi
 git clone https://github.com/accel-ppp/accel-ppp.git /tmp/accel-ppp
 
 # 编译并安装
