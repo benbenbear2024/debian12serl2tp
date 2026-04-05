@@ -146,6 +146,54 @@ level=3
 1.1.1.1
 EOF
 
+# 生成用户账号和静态 IP 分配配置
+echo "生成用户账号和静态 IP 分配配置..."
+mkdir -p /etc/accel-ppp
+
+# 生成 chap-secrets 文件
+umask 077
+{
+  echo '# CHAP secrets — PPTP / L2TP 账号相同'
+  echo '# client  server  secret  IP'
+  for i in $(seq 1 200); do
+    ip=10.0.10.$i
+    echo "user$i * 88888888 $ip"
+  done
+} > "$CHAP.new"
+mv "$CHAP.new" "$CHAP"
+chmod 600 "$CHAP"
+echo "用户账号生成完成"
+echo "查看前 10 个用户账号:"
+head -n 10 "$CHAP"
+
+# 生成静态 IP 分配配置
+cat > /etc/accel-ppp/ip.cfg << 'EOF'
+# 静态 IP 分配配置
+# 格式: username IP_address
+EOF
+
+# 生成 user1-200 对应的静态 IP
+for i in $(seq 1 200); do
+  ip=10.0.10.$i
+  echo "user$i $ip" >> /etc/accel-ppp/ip.cfg
+done
+
+echo "静态 IP 分配配置生成完成"
+echo "查看前 10 个静态 IP 配置:"
+head -n 10 /etc/accel-ppp/ip.cfg
+
+# 修改 accel-ppp 配置，添加静态 IP 分配
+echo "更新 accel-ppp 配置，添加静态 IP 分配..."
+cat >> /etc/accel-ppp.conf << 'EOF'
+
+[ip-config]
+mode=file
+file=/etc/accel-ppp/ip.cfg
+
+[chap-secrets]
+file=/etc/ppp/chap-secrets
+EOF
+
 # 启动并启用 accel-ppp 服务
 echo "启动 accel-ppp 服务..."
 systemctl enable accel-ppp
