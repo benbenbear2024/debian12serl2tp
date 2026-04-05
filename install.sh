@@ -231,6 +231,7 @@ apt-get install -y strongswan
 cat > /etc/ipsec.conf << 'EOF'
 config setup
     charondebug="ike 2, knl 2, cfg 2"
+    uniqueids=no
 
 conn l2tp
     keyexchange=ikev1
@@ -243,11 +244,25 @@ conn l2tp
     rightprotoport=17/1701
     authby=secret
     auto=add
+
+conn ikev2
+    keyexchange=ikev2
+    ike=aes256-sha256-modp2048,aes256-sha256-modp1024
+    esp=aes256-sha256
+    left=%defaultroute
+    leftsubnet=0.0.0.0/0
+    right=%any
+    rightsourceip=10.0.10.1-10.0.10.200
+    authby=secret
+    auto=add
 EOF
 
 # 配置预共享密钥
 cat > /etc/ipsec.secrets << 'EOF'
-: PSK "88888888"
+# This file holds shared secrets or RSA private keys for authentication.
+
+# PSK for all connections
+%any %any : PSK "88888888"
 EOF
 
 # 启动并启用 strongSwan 服务
