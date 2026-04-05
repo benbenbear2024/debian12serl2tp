@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 
 MIHOMO_VERSION="v1.19.22"
 INSTALL_DIR="/usr/local/bin"
@@ -312,3 +312,4 @@ main() {
 }
 
 main "$@"
+\n
