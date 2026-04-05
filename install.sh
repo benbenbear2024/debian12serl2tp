@@ -103,7 +103,42 @@ if [ -d "/tmp/accel-ppp" ]; then
   echo "清理已存在的 accel-ppp 目录..."
   rm -rf /tmp/accel-ppp
 fi
+
+# 尝试从 GitHub 直接克隆
+echo "尝试从 GitHub 直接克隆..."
 git clone https://github.com/accel-ppp/accel-ppp.git /tmp/accel-ppp
+
+# 如果克隆失败，尝试使用加速链接
+if [ $? -ne 0 ]; then
+  echo "GitHub 克隆失败，尝试使用加速链接..."
+  
+  # 从 github cdn.txt 获取前 5 个加速链接
+  if [ -f "github cdn.txt" ]; then
+    echo "从 github cdn.txt 获取加速链接..."
+    ACCEL_PPP_URL="https://github.com/accel-ppp/accel-ppp.git"
+    
+    # 读取前 5 个加速链接
+    head -n 5 "github cdn.txt" | while read proxy; do
+      if [ -n "$proxy" ]; then
+        proxy_url="${proxy}${ACCEL_PPP_URL}"
+        echo "尝试使用加速链接: $proxy"
+        git clone "$proxy_url" /tmp/accel-ppp
+        if [ $? -eq 0 ]; then
+          echo "克隆成功！"
+          break
+        fi
+      fi
+    done
+  else
+    echo "警告：github cdn.txt 文件不存在"
+  fi
+fi
+
+# 检查克隆是否成功
+if [ ! -d "/tmp/accel-ppp" ]; then
+  echo "错误：无法克隆 accel-ppp 源码"
+  exit 1
+fi
 
 # 编译并安装
 echo "编译 accel-ppp..."
