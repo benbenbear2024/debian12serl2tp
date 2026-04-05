@@ -93,19 +93,48 @@ apt-get install -y net-tools iptables-persistent
 
 # 安装 accel-ppp
 echo "安装 accel-ppp..."
-# 添加 accel-ppp 安装源
-echo "添加 accel-ppp 安装源..."
-apt-get install -y apt-transport-https ca-certificates wget
-wget -O /etc/apt/trusted.gpg.d/accel-ppp.gpg https://repo.accel-ppp.org/keys/accel-ppp.gpg
-echo "deb https://repo.accel-ppp.org/debian/ bookworm main" > /etc/apt/sources.list.d/accel-ppp.list
-apt-get update -qq
+# 安装编译依赖
+apt-get install -y build-essential git cmake libpcre3-dev libssl-dev liblua5.2-dev libcurl4-openssl-dev
 
-# 安装 accel-ppp 及其依赖
-apt-get install -y accel-ppp accel-ppp-pptp accel-ppp-l2tp accel-ppp-ipoe
+# 克隆 accel-ppp 源码
+echo "克隆 accel-ppp 源码..."
+git clone https://github.com/accel-ppp/accel-ppp.git /tmp/accel-ppp
+
+# 编译并安装
+echo "编译 accel-ppp..."
+cd /tmp/accel-ppp
+mkdir -p build
+cd build
+cmake .. -DBUILD_IPOE_DRIVER=OFF -DBUILD_VLAN_MON_DRIVER=OFF
+make -j$(nproc)
+echo "安装 accel-ppp..."
+make install
+
+# 创建系统服务
+echo "创建 accel-ppp 系统服务..."
+cat > /etc/systemd/system/accel-ppp.service << 'EOF'
+[Unit]
+Description=Accel-PPP
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/accel-pppd -c /usr/local/etc/accel-ppp/accel-ppp.conf
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# 启用服务
+systemctl daemon-reload
+systemctl enable accel-ppp
 
 # 配置 accel-ppp
 echo "配置 accel-ppp..."
-cat > /etc/accel-ppp.conf << 'EOF'
+mkdir -p /usr/local/etc/accel-ppp
+cat > /usr/local/etc/accel-ppp/accel-ppp.conf << 'EOF'
 [modules]
 log_syslog
 pptp
@@ -155,7 +184,7 @@ EOF
 
 # 生成用户账号和静态 IP 分配配置
 echo "生成用户账号和静态 IP 分配配置..."
-mkdir -p /etc/accel-ppp
+mkdir -p /usr/local/etc/accel-ppp
 
 # 生成 chap-secrets 文件
 umask 077
@@ -174,7 +203,7 @@ echo "查看前 10 个用户账号:"
 head -n 10 "$CHAP"
 
 # 生成静态 IP 分配配置
-cat > /etc/accel-ppp/ip.cfg << 'EOF'
+cat > /usr/local/etc/accel-ppp/ip.cfg << 'EOF'
 # 静态 IP 分配配置
 # 格式: username IP_address
 EOF
@@ -182,20 +211,20 @@ EOF
 # 生成 user1-200 对应的静态 IP
 for i in $(seq 1 200); do
   ip=10.0.10.$i
-  echo "user$i $ip" >> /etc/accel-ppp/ip.cfg
+  echo "user$i $ip" >> /usr/local/etc/accel-ppp/ip.cfg
 done
 
 echo "静态 IP 分配配置生成完成"
 echo "查看前 10 个静态 IP 配置:"
-head -n 10 /etc/accel-ppp/ip.cfg
+head -n 10 /usr/local/etc/accel-ppp/ip.cfg
 
 # 修改 accel-ppp 配置，添加静态 IP 分配
 echo "更新 accel-ppp 配置，添加静态 IP 分配..."
-cat >> /etc/accel-ppp.conf << 'EOF'
+cat >> /usr/local/etc/accel-ppp/accel-ppp.conf << 'EOF'
 
 [ip-config]
 mode=file
-file=/etc/accel-ppp/ip.cfg
+file=/usr/local/etc/accel-ppp/ip.cfg
 
 [chap-secrets]
 file=/etc/ppp/chap-secrets
