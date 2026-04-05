@@ -1,0 +1,19 @@
+# PPTP：兼容 Windows 内置客户端（通常协商 MPPE）
+name pptp-vpn
+refuse-pap
+refuse-chap
+refuse-mschap
+require-mschap-v2
+require-mppe-128
+ms-dns 8.8.8.8
+ms-dns 1.1.1.1
+asyncmap 0
+auth
+lock
+hide-password
+modem
+proxyarp
+nodefaultroute
+mtu 1410
+mru 1410
+noccp
