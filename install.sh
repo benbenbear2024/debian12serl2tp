@@ -1,4 +1,4 @@
-#!/bin/sh
+﻿#!/bin/sh
 # Debian 12.13 — PPTP + L2TP
 # 用法:
 #   sudo VPN_SERVER_ID=vpn.example.com bash install.sh
@@ -105,7 +105,10 @@ apt-get install -y pptpd ppp iptables openssl \
 echo "安装必要的工具包..."
 apt-get install -y net-tools iptables-persistent
 
-
+# 确保配置目录存在
+echo "创建配置目录..."
+mkdir -p /etc/ppp
+mkdir -p /etc/xl2tpd
 
 # 配置 DNS
 echo "配置 DNS 服务器..."
@@ -469,4 +472,4 @@ Mihomo 信息:
   - 查看状态: systemctl status mihomo
   - 查看日志: journalctl -u mihomo -f
 EOF
-fi
+fi\n
