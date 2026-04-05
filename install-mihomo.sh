@@ -216,14 +216,28 @@ EOF
 }
 
 start_service() {
+    local start_now=$1
     log_info "设置 Mihomo 服务开机启动..."
     systemctl enable mihomo
     log_info "Mihomo 服务已设置为开机启动"
-    log_info "注意：由于尚未配置 mihomo，服务未立即启动"
-    log_info "请在配置 ${CONFIG_DIR}/config.yaml 后重启服务"
+    
+    if [ "$start_now" = "yes" ]; then
+        log_info "启动 Mihomo 服务..."
+        systemctl start mihomo
+        if systemctl is-active --quiet mihomo; then
+            log_info "Mihomo 服务已启动"
+        else
+            log_warn "Mihomo 服务启动失败，请检查配置文件"
+        fi
+    else
+        log_info "由于未生成配置文件，服务未立即启动"
+        log_info "请在配置 ${CONFIG_DIR}/config.yaml 后执行以下命令启动服务："
+        log_info "  systemctl start mihomo"
+    fi
 }
 
 check_installation() {
+    local start_now=$1
     log_info "检查安装..."
     
     if [ -f "${INSTALL_DIR}/mihomo" ]; then
@@ -240,7 +254,11 @@ check_installation() {
         log_warn "配置文件不存在，请手动配置 ${CONFIG_DIR}/config.yaml"
     fi
     
-    log_info "服务状态: 已设置开机启动（未运行）"
+    if [ "$start_now" = "yes" ] && systemctl is-active --quiet mihomo; then
+        log_info "服务状态: 运行中"
+    else
+        log_info "服务状态: 已设置开机启动（未运行）"
+    fi
 }
 
 print_info() {
@@ -320,9 +338,9 @@ main() {
     
     create_systemd_service
     
-    start_service
+    start_service "$CREATE_CONFIG"
     
-    check_installation
+    check_installation "$CREATE_CONFIG"
     
     print_info
 }
