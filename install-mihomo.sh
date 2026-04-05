@@ -6,11 +6,14 @@ CONFIG_DIR="/etc/mihomo"
 LOG_DIR="/var/log/mihomo"
 
 GITHUB_MIRRORS=(
-    "https://ghproxy.com/"
-    "https://mirror.ghproxy.com/"
-    "https://gh.api.99988866.xyz/"
-    "https://api.github.com/"
-    "https://github.com/"
+    "https://ghfast.top/"
+    "https://gh.llkk.cc/"
+    "https://gh-proxy.org/"
+    "https://hk.gh-proxy.org/"
+    "https://cdn.gh-proxy.org/"
+    "https://edgeone.gh-proxy.org/"
+    "https://gh.bugdey.us.kg"
+    
 )
 
 RED='\033[0;31m'
