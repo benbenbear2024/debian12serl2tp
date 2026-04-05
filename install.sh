@@ -69,6 +69,19 @@ else
   echo "将不开启进程守护"
 fi
 
+# 提示用户选择是否安装 mihomo
+echo "\n是否安装 mihomo 代理服务？"
+echo "1. 是"
+echo "2. 否（默认）"
+read -p "请选择 (1/2): " MIHOMO_CHOICE
+if [ "$MIHOMO_CHOICE" = "1" ]; then
+  INSTALL_MIHOMO="yes"
+  echo "将安装 mihomo"
+else
+  INSTALL_MIHOMO="no"
+  echo "将不安装 mihomo"
+fi
+
 # 设置 VPN_SERVER_ID
 if [ -z "${VPN_SERVER_ID:-}" ]; then
   export VPN_SERVER_ID="$SERVER_IP"
@@ -388,6 +401,18 @@ sleep 3
 echo "检查网络状态..."
 ip addr show $DEFAULT_IF
 
+# 安装 mihomo
+if [ "$INSTALL_MIHOMO" = "yes" ]; then
+  echo "\n=== 开始安装 mihomo ==="
+  if [ -f "$SCRIPT_DIR/install-mihomo.sh" ]; then
+    chmod +x "$SCRIPT_DIR/install-mihomo.sh"
+    bash "$SCRIPT_DIR/install-mihomo.sh"
+  else
+    echo "错误: 未找到 install-mihomo.sh 脚本"
+    echo "请确保 install-mihomo.sh 文件存在于脚本目录中"
+  fi
+fi
+
 cat << EOF
 
 === 安装完成 ===
@@ -424,3 +449,16 @@ Windows 添加 VPN:
   - PPTP: journalctl -u pptpd -f
   - L2TP: journalctl -u xl2tpd -f
 EOF
+
+if [ "$INSTALL_MIHOMO" = "yes" ]; then
+  cat << EOF
+
+Mihomo 信息:
+  - 配置文件: /etc/mihomo/config.yaml
+  - 控制面板: http://127.0.0.1:9090
+  - 代理端口: 7890 (HTTP/SOCKS5)
+  - 服务管理: systemctl start/stop/restart mihomo
+  - 查看状态: systemctl status mihomo
+  - 查看日志: journalctl -u mihomo -f
+EOF
+fi
