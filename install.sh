@@ -1,4 +1,4 @@
-﻿#!/bin/sh
+#!/bin/sh
 # Debian 12.13 — PPTP + L2TP
 # 用法:
 #   sudo VPN_SERVER_ID=vpn.example.com bash install.sh
@@ -472,4 +472,4 @@ Mihomo 信息:
   - 查看状态: systemctl status mihomo
   - 查看日志: journalctl -u mihomo -f
 EOF
-fi\n
+fi
