@@ -354,76 +354,6 @@ if [ "$INSTALL_MIHOMO" = "yes" ]; then
   fi
 fi
 
-# 配置服务器网络地址
-echo "配置服务器网络地址为 $SERVER_IP..."
-# 备份原有网络配置
-cp /etc/network/interfaces /etc/network/interfaces.bak 2>/dev/null || true
-echo "已备份原有网络配置文件"
-# 获取默认网络接口
-echo "获取默认网络接口..."
-DEFAULT_IF=$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')
-echo "默认网络接口: $DEFAULT_IF"
-if [ -z "$DEFAULT_IF" ]; then
-  DEFAULT_IF="ens18"
-  echo "未找到默认网络接口，使用默认值: $DEFAULT_IF"
-fi
-# 配置网络接口
-echo "创建新的网络配置文件..."
-cat > /etc/network/interfaces << EOF
-auto lo
-iface lo inet loopback
-
-auto $DEFAULT_IF
-iface $DEFAULT_IF inet static
-    address $SERVER_IP/24
-    gateway 10.0.10.1
-    dns-nameservers 8.8.8.8 1.1.1.1
-EOF
-echo "网络配置文件已创建，内容如下:"
-cat /etc/network/interfaces
-
-# 提示用户选择是否重启网络
-echo "\n网络配置已更新，需要重启网络服务使配置生效。"
-echo "重启网络服务可能会导致网络连接暂时中断。"
-echo "1. 立即重启网络服务（默认）"
-echo "2. 稍后手动执行网络重启 systemctl restart networking"
-read -p "请选择 (1/2): " RESTART_CHOICE
-if [ -z "$RESTART_CHOICE" ] || [ "$RESTART_CHOICE" != "2" ]; then
-  # 重启网络服务
-  echo "重启网络服务..."
-  systemctl restart networking || {
-    echo "警告：网络服务重启失败，请手动重启网络接口"
-    echo "尝试使用 ifdown/ifup 命令重启网络接口..."
-    ifdown $DEFAULT_IF && ifup $DEFAULT_IF || echo "ifdown/ifup 命令执行失败"
-  }
-  # 检查网络配置是否生效
-  echo "检查网络配置是否生效..."
-  ip addr show $DEFAULT_IF
-else
-  # 不重启网络，提示用户手动重启命令
-  echo "\n网络服务未重启，配置将在下次系统启动或手动重启网络服务后生效。"
-  echo "手动重启网络服务的命令："
-  echo "  systemctl restart networking"
-  echo "  或"
-  echo "  ifdown $DEFAULT_IF && ifup $DEFAULT_IF"
-  echo "\n检查网络配置的命令："
-  echo "  ip addr show $DEFAULT_IF"
-fi
-
-# 提示 IP 地址更改
-echo "\n=== IP 地址更改提示 ==="
-echo "服务器 IP 地址已更改为: $SERVER_IP"
-echo "请使用新的 IP 地址连接 VPN 服务"
-echo "=======================\n"
-
-# 等待网络稳定
-echo "等待网络连接稳定..."
-sleep 3
-
-# 检查网络状态
-echo "检查网络状态..."
-ip addr show $DEFAULT_IF
-
 cat << EOF
 
 === 安装完成 ===
@@ -473,3 +403,79 @@ Mihomo 信息:
   - 查看日志: journalctl -u mihomo -f
 EOF
 fi
+
+# ========== 网络配置（最后执行） ==========
+echo "\n=========================================="
+echo "网络配置"
+echo "=========================================="
+
+# 配置服务器网络地址
+echo "配置服务器网络地址为 $SERVER_IP..."
+# 备份原有网络配置
+cp /etc/network/interfaces /etc/network/interfaces.bak 2>/dev/null || true
+echo "已备份原有网络配置文件"
+# 获取默认网络接口
+echo "获取默认网络接口..."
+DEFAULT_IF=$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')
+echo "默认网络接口: $DEFAULT_IF"
+if [ -z "$DEFAULT_IF" ]; then
+  DEFAULT_IF="ens18"
+  echo "未找到默认网络接口，使用默认值: $DEFAULT_IF"
+fi
+# 配置网络接口
+echo "创建新的网络配置文件..."
+cat > /etc/network/interfaces << EOF
+auto lo
+iface lo inet loopback
+
+auto $DEFAULT_IF
+iface $DEFAULT_IF inet static
+    address $SERVER_IP/24
+    gateway 10.0.10.1
+    dns-nameservers 8.8.8.8 1.1.1.1
+EOF
+echo "网络配置文件已创建，内容如下:"
+cat /etc/network/interfaces
+
+# 提示用户选择是否重启网络
+echo "\n网络配置已更新，需要重启网络服务使配置生效。"
+echo "重启网络服务可能会导致网络连接暂时中断。"
+echo "1. 立即重启网络服务（默认）"
+echo "2. 稍后手动执行网络重启 systemctl restart networking"
+read -p "请选择 (1/2): " RESTART_CHOICE
+if [ -z "$RESTART_CHOICE" ] || [ "$RESTART_CHOICE" != "2" ]; then
+  echo "重启网络服务..."
+  systemctl restart networking || {
+    echo "警告：网络服务重启失败，请手动重启网络接口"
+    echo "尝试使用 ifdown/ifup 命令重启网络接口..."
+    ifdown $DEFAULT_IF && ifup $DEFAULT_IF || echo "ifdown/ifup 命令执行失败"
+  }
+  echo "检查网络配置是否生效..."
+  ip addr show $DEFAULT_IF
+else
+  echo "\n网络服务未重启，配置将在下次系统启动或手动重启网络服务后生效。"
+  echo "手动重启网络服务的命令："
+  echo "  systemctl restart networking"
+  echo "  或"
+  echo "  ifdown $DEFAULT_IF && ifup $DEFAULT_IF"
+  echo "\n检查网络配置的命令："
+  echo "  ip addr show $DEFAULT_IF"
+fi
+
+# 提示 IP 地址更改
+echo "\n=== IP 地址更改提示 ==="
+echo "服务器 IP 地址已更改为: $SERVER_IP"
+echo "请使用新的 IP 地址连接 VPN 服务"
+echo "=======================\n"
+
+# 等待网络稳定
+echo "等待网络连接稳定..."
+sleep 3
+
+# 检查网络状态
+echo "检查网络状态..."
+ip addr show $DEFAULT_IF
+
+echo "\n=========================================="
+echo "全部配置完成"
+echo "=========================================="
