@@ -144,7 +144,6 @@ cat > /usr/local/etc/accel-ppp/accel-ppp.conf << 'EOF'
 log_syslog
 pptp
 l2tp
-ipoe
 auth_mschap_v2
 
 [core]
@@ -155,12 +154,9 @@ thread-count=4
 verbose=1
 auth=chap,mschapv2
 mppe=require
-check-ip=1
+check-ip=0
 lcp-echo-interval=30
 lcp-echo-failure=3
-
-[ipoe]
-enable=0
 
 [pptp]
 enable=1
@@ -174,9 +170,6 @@ local-ip=10.0.10.254
 
 [auth]
 mschap-v2=1
-
-[client-ip-range]
-10.0.10.1-10.0.10.200
 
 [log]
 syslog=accel-ppp
@@ -234,6 +227,37 @@ file=/usr/local/etc/accel-ppp/ip.cfg
 [chap-secrets]
 file=/etc/ppp/chap-secrets
 EOF
+
+# 安装并配置 strongSwan（IPsec 支持）
+echo "安装并配置 strongSwan（IPsec 支持）..."
+apt-get install -y strongswan
+
+# 配置 IPsec
+cat > /etc/ipsec.conf << 'EOF'
+config setup
+    charondebug="ike 2, knl 2, cfg 2"
+
+conn l2tp
+    keyexchange=ikev1
+    ike=aes128-sha1-modp2048,aes128-sha1-modp1024
+    esp=aes128-sha1
+    type=transport
+    left=%defaultroute
+    leftprotoport=17/1701
+    right=%any
+    rightprotoport=17/1701
+    authby=secret
+    auto=add
+EOF
+
+# 配置预共享密钥
+cat > /etc/ipsec.secrets << 'EOF'
+: PSK "88888888"
+EOF
+
+# 启动并启用 strongSwan 服务
+systemctl enable strongswan-starter
+systemctl restart strongswan-starter
 
 # 启动并启用 accel-ppp 服务
 echo "启动 accel-ppp 服务..."
