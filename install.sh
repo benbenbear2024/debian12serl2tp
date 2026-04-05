@@ -91,153 +91,68 @@ apt-get install -y pptpd ppp iptables openssl xl2tpd strongswan
 echo "安装必要的工具包..."
 apt-get install -y net-tools iptables-persistent
 
-# 安装 SoftEther VPN 服务器
-echo "安装 SoftEther VPN 服务器..."
-# 下载并安装 SoftEther VPN Server
-SOFTETHER_URL="https://github.com/SoftEtherVPN/SoftEtherVPN_Stable/releases/download/v4.42-9798-rtm/softether-vpnserver-v4.42-9798-rtm-2023.06.30-linux-x64-64bit.tar.gz"
+# 安装 accel-ppp
+echo "安装 accel-ppp..."
+# 安装 accel-ppp 及其依赖
+apt-get install -y accel-ppp accel-ppp-pptp accel-ppp-l2tp accel-ppp-ipoe
 
-# 从 github cdn.txt 读取前 5 个代理域名
-echo "读取 GitHub 代理域名..."
-# 使用更兼容的方式处理代理列表
-GITHUB_PROXIES_FILE="$SCRIPT_DIR/github cdn.txt"
-if [ -f "$GITHUB_PROXIES_FILE" ]; then
-  echo "找到代理配置文件: $GITHUB_PROXIES_FILE"
-  # 读取前 5 个代理域名
-  PROXY1=$(head -n 1 "$GITHUB_PROXIES_FILE" | tr -d '\r')
-  PROXY2=$(head -n 2 "$GITHUB_PROXIES_FILE" | tail -n 1 | tr -d '\r')
-  PROXY3=$(head -n 3 "$GITHUB_PROXIES_FILE" | tail -n 1 | tr -d '\r')
-  PROXY4=$(head -n 4 "$GITHUB_PROXIES_FILE" | tail -n 1 | tr -d '\r')
-  PROXY5=$(head -n 5 "$GITHUB_PROXIES_FILE" | tail -n 1 | tr -d '\r')
-  echo "代理域名列表:"
-  echo "1. $PROXY1"
-  echo "2. $PROXY2"
-  echo "3. $PROXY3"
-  echo "4. $PROXY4"
-  echo "5. $PROXY5"
-else
-  echo "警告：未找到 github cdn.txt 文件，将使用默认代理"
-  PROXY1="https://gh.llkk.cc/"
-  PROXY2="https://gitproxy.click/"
-  PROXY3="https://github.tmby.shop/"
-  PROXY4="https://gh.bugdey.us.kg/"
-  PROXY5="https://gitproxy.mrhjx.cn/"
-fi
+# 配置 accel-ppp
+echo "配置 accel-ppp..."
+cat > /etc/accel-ppp.conf << 'EOF'
+[modules]
+log_syslog
+pptp
+l2tp
+ipoe
+auth_mschap_v2
 
-# 尝试下载 SoftEther VPN Server
-echo "开始下载 SoftEther VPN 服务器..."
-download_success=0
+[core]
+log-error=/var/log/accel-ppp/core.log
+thread-count=4
 
-# 尝试第一个代理
-echo "尝试使用代理 1: $PROXY1"
-if wget -q --show-progress -O /tmp/softether-vpnserver.tar.gz "${PROXY1}${SOFTETHER_URL}"; then
-  echo "下载成功！"
-  download_success=1
-else
-  echo "代理 1 下载失败，尝试下一个代理..."
-  
-  # 尝试第二个代理
-  echo "尝试使用代理 2: $PROXY2"
-  if wget -q --show-progress -O /tmp/softether-vpnserver.tar.gz "${PROXY2}${SOFTETHER_URL}"; then
-    echo "下载成功！"
-    download_success=1
-  else
-    echo "代理 2 下载失败，尝试下一个代理..."
-    
-    # 尝试第三个代理
-    echo "尝试使用代理 3: $PROXY3"
-    if wget -q --show-progress -O /tmp/softether-vpnserver.tar.gz "${PROXY3}${SOFTETHER_URL}"; then
-      echo "下载成功！"
-      download_success=1
-    else
-      echo "代理 3 下载失败，尝试下一个代理..."
-      
-      # 尝试第四个代理
-      echo "尝试使用代理 4: $PROXY4"
-      if wget -q --show-progress -O /tmp/softether-vpnserver.tar.gz "${PROXY4}${SOFTETHER_URL}"; then
-        echo "下载成功！"
-        download_success=1
-      else
-        echo "代理 4 下载失败，尝试下一个代理..."
-        
-        # 尝试第五个代理
-        echo "尝试使用代理 5: $PROXY5"
-        if wget -q --show-progress -O /tmp/softether-vpnserver.tar.gz "${PROXY5}${SOFTETHER_URL}"; then
-          echo "下载成功！"
-          download_success=1
-        else
-          echo "所有代理下载失败，尝试直接从 GitHub 下载..."
-          if wget -q --show-progress -O /tmp/softether-vpnserver.tar.gz "$SOFTETHER_URL"; then
-            echo "直接下载成功！"
-            download_success=1
-          else
-            echo "错误：无法下载 SoftEther VPN 服务器，请检查网络连接"
-            exit 1
-          fi
-        fi
-      fi
-    fi
-  fi
-fi
+[ppp]
+verbose=1
+auth=chap,mschapv2
+mppe=require
+check-ip=1
+lcp-echo-interval=30
+lcp-echo-failure=3
 
-mkdir -p /opt/softether
-cd /opt/softether
-tar -xzf /tmp/softether-vpnserver.tar.gz
-cd vpnserver
-make
-chmod +x vpnserver vpncmd
+[ipoe]
+enable=0
 
-# 创建 systemd 服务文件
-echo "创建 SoftEther VPN 服务..."
-cat > /etc/systemd/system/softether-vpnserver.service << 'EOF'
-[Unit]
-Description=SoftEther VPN Server
-After=network.target
+[pptp]
+enable=1
+ip-range=10.0.10.2-10.0.10.201
+local-ip=10.0.10.1
 
-[Service]
-Type=forking
-ExecStart=/opt/softether/vpnserver/vpnserver start
-ExecStop=/opt/softether/vpnserver/vpnserver stop
-Restart=always
-RestartSec=5s
+[l2tp]
+enable=1
+ip-range=10.0.10.2-10.0.10.201
+local-ip=10.0.10.1
 
-[Install]
-WantedBy=multi-user.target
+[auth]
+mschap-v2=1
+
+[client-ip-range]
+10.0.10.2-10.0.10.201
+
+[log]
+syslog=accel-ppp
+level=3
+
+[dns]
+8.8.8.8
+1.1.1.1
 EOF
 
-# 启动并启用服务
-systemctl daemon-reload
-systemctl enable softether-vpnserver
-systemctl start softether-vpnserver
+# 启动并启用 accel-ppp 服务
+echo "启动 accel-ppp 服务..."
+systemctl enable accel-ppp
+systemctl start accel-ppp
+systemctl status accel-ppp --no-pager
 
-echo "SoftEther VPN 服务器安装完成"
-echo "检查 SoftEther VPN 服务状态..."
-systemctl status softether-vpnserver --no-pager
-
-# 配置 SoftEther VPN 服务器
-echo "配置 SoftEther VPN 服务器..."
-/opt/softether/vpnserver/vpncmd localhost:5555 /SERVER /CMD ServerPasswordSet 88888888
-/opt/softether/vpnserver/vpncmd localhost:5555 /SERVER /CMD HubCreate VPN /PASSWORD:88888888
-/opt/softether/vpnserver/vpncmd localhost:5555 /SERVER /HUB:VPN /CMD SecureNatEnable
-/opt/softether/vpnserver/vpncmd localhost:5555 /SERVER /HUB:VPN /CMD UserCreate user1 /PASSWORD:88888888
-/opt/softether/vpnserver/vpncmd localhost:5555 /SERVER /HUB:VPN /CMD UserPasswordSet user1 /PASSWORD:88888888
-
-# 配置 L2TP/IPsec
-echo "配置 L2TP/IPsec..."
-/opt/softether/vpnserver/vpncmd localhost:5555 /SERVER /HUB:VPN /CMD L2TPEnable yes /L2TPDualStack yes /L2TPPsk 88888888
-
-# 配置 SSTP
-echo "配置 SSTP..."
-/opt/softether/vpnserver/vpncmd localhost:5555 /SERVER /HUB:VPN /CMD SSTPEnable yes
-
-# 配置 PPTP
-echo "配置 PPTP..."
-/opt/softether/vpnserver/vpncmd localhost:5555 /SERVER /HUB:VPN /CMD PPTPEnable yes
-
-# 生成自签名证书
-echo "生成 SSL 证书..."
-/opt/softether/vpnserver/vpncmd localhost:5555 /SERVER /CMD ServerCertCreate /CN:$SERVER_IP /O:VPN /OU:Server /C:CN
-
-echo "SoftEther VPN 服务器配置完成"
+echo "accel-ppp 安装配置完成"
 
 echo "配置 DNS 服务器..."
 cat > /etc/resolv.conf << 'EOF'
@@ -318,8 +233,6 @@ if [ "$FIREWALL_INSTALL" = "yes" ]; then
   iptables -A INPUT -p udp --dport 1701 -j ACCEPT
   iptables -A INPUT -p udp --dport 500 -j ACCEPT
   iptables -A INPUT -p udp --dport 4500 -j ACCEPT
-  iptables -A INPUT -p tcp --dport 443 -j ACCEPT
-  iptables -A INPUT -p tcp --dport 5555 -j ACCEPT
 
   iptables -A INPUT -p tcp --dport 7890 -j ACCEPT
   iptables -A INPUT -p tcp --dport 7891 -j ACCEPT
@@ -365,13 +278,13 @@ if [ "$DAEMON_INSTALL" = "yes" ]; then
   echo "创建 VPN 服务守护脚本..."
   cat > /usr/local/bin/vpn-daemon.sh << 'EOF'
 #!/bin/bash
-if ! systemctl is-active --quiet softether-vpnserver; then
-  echo "$(date '+%Y-%m-%d %H:%M:%S') - SoftEther VPN 服务未运行，正在启动..." >> /var/log/vpn-daemon.log
-  systemctl start softether-vpnserver
-  if systemctl is-active --quiet softether-vpnserver; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - SoftEther VPN 服务启动成功" >> /var/log/vpn-daemon.log
+if ! systemctl is-active --quiet accel-ppp; then
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - accel-ppp 服务未运行，正在启动..." >> /var/log/vpn-daemon.log
+  systemctl start accel-ppp
+  if systemctl is-active --quiet accel-ppp; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - accel-ppp 服务启动成功" >> /var/log/vpn-daemon.log
   else
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - SoftEther VPN 服务启动失败" >> /var/log/vpn-daemon.log
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - accel-ppp 服务启动失败" >> /var/log/vpn-daemon.log
   fi
 fi
 EOF
@@ -467,10 +380,10 @@ ip addr show $DEFAULT_IF
 cat << EOF
 
 === 安装完成 ===
-账号: user1  密码: 88888888
+账号: user1 ~ user200  密码: 88888888
 
 地址池:
-  SoftEther VPN: 192.168.30.10-192.168.30.254（服务器端 192.168.30.1）
+  PPTP/L2TP: 10.0.10.2 - 10.0.10.201（服务器端 10.0.10.1）
 
 服务端身份: $VPN_SERVER_ID
   Windows「服务器地址」必须与设置一致（同一域名或同一 IP）。
@@ -480,30 +393,23 @@ Windows 添加 VPN:
     - 类型: PPTP
     - 服务器: $VPN_SERVER_ID
     - 登录信息类型: 用户名和密码
-    - 用户名/密码: user1 / 88888888
+    - 用户名/密码: userN / 88888888
   
   • L2TP 连接:
     - 类型: L2TP/IPsec 预共享密钥
     - 服务器: $VPN_SERVER_ID
     - 预共享密钥: 88888888
     - 登录信息类型: 用户名和密码
-    - 用户名/密码: user1 / 88888888
-  
-  • SSTP 连接:
-    - 类型: SSTP
-    - 服务器: $VPN_SERVER_ID
-    - 登录信息类型: 用户名和密码
-    - 用户名/密码: user1 / 88888888
+    - 用户名/密码: userN / 88888888
 
 放行端口:
-  - VPN 相关: PPTP (TCP 1723 + GRE)、L2TP (UDP 1701)、IPsec (UDP 500, 4500)、SSTP (TCP 443)
-  - SoftEther 管理: TCP 5555
+  - VPN 相关: PPTP (TCP 1723 + GRE)、L2TP (UDP 1701)、IPsec (UDP 500, 4500)
   - 常用协议: SSH (TCP 22)、HTTP (TCP 80)、HTTPS (TCP 443)、FTP (TCP 21)、SMTP (TCP 25)、POP3 (TCP 110)、IMAP (TCP 143)、DNS (UDP 53)、RDP (TCP 3389)
   - 其他: TCP 7890, 7891, 7892, 9090, 9999
 
 日志查看:
-  - SoftEther VPN: systemctl status softether-vpnserver
-  - SoftEther 详细日志: /opt/softether/vpnserver/server_log/
+  - accel-ppp: journalctl -u accel-ppp -f
+  - accel-ppp 详细日志: /var/log/accel-ppp/
 EOF
 
 if [ "$INSTALL_MIHOMO" = "yes" ]; then
