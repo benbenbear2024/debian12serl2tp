@@ -156,35 +156,58 @@ create_config() {
     if [ ! -f "${CONFIG_DIR}/config.yaml" ]; then
         cat > "${CONFIG_DIR}/config.yaml" << 'EOF'
 mixed-port: 7890
+redir-port: 7892
+tproxy-port: 7893
+authentication: [""]
 allow-lan: true
-bind-address: '*'
 mode: rule
 log-level: info
-ipv6: false
-external-controller: 127.0.0.1:9090
-
+ipv6: true
+external-controller: :9999
+external-ui: ui
+secret: "88888888"
+        
+tun: {enable: true, stack: system, device: utun, auto-route: true, dns-hijack: ["tcp://8.8.8.8:53", "8.8.8.8:53"]}
+experimental: {ignore-resolve-fail: true, interface-name: en0}
 dns:
-  enable: true
-  ipv6: false
-  enhanced-mode: fake-ip
-  fake-ip-range: 198.18.0.1/16
-  fake-ip-filter:
-    - '*.lan'
-    - localhost.ptlogin2.qq.com
-  nameserver:
-    - 223.5.5.5
-    - 119.29.29.29
-  fallback:
-    - tls://8.8.8.8:853
-    - tls://1.1.1.1:853
-
-proxies:
-
-proxy-groups:
+    enable: true
+    ipv6: false
+    listen: 0.0.0.0:53
+    enhanced-mode: fake-ip
+    fake-ip-range: 198.18.0.1/16
+    use-hosts: true
+    default-nameserver: [223.5.5.5, 119.29.29.29,127.0.0.1:53]
+    nameserver: ['https://dns.alidns.com/dns-query', 'https://doh.pub/dns-query',127.0.0.1:53]
+    fallback: ['https://dns.google/dns-query', 'https://1.1.1.1/dns-query', 'https://dns.cloudflare.com/dns-query',8.8.8.8]
+    fallback-filter: { geoip: true, geoip-code: CN, ipcidr: [240.0.0.0/4, 0.0.0.0/32] }
+    fake-ip-filter: ['*.lan', '*.local', localhost.ptlogin2.qq.com]
+store-selected: true
+find-process-mode: "off"
 
 rules:
-  - GEOIP,CN,DIRECT
-  - MATCH,PROXY
+    - SRC-IP-CIDR,10.0.10.2/32,Name1
+    - SRC-IP-CIDR,10.0.10.3/32,Name2
+    - SRC-IP-CIDR,10.0.10.4/32,Name3
+    - SRC-IP-CIDR,10.0.10.5/32,Name4
+    - SRC-IP-CIDR,10.0.10.6/32,Name5
+    - SRC-IP-CIDR,10.0.10.7/32,Name6
+    - SRC-IP-CIDR,10.0.10.8/32,Name7
+    - SRC-IP-CIDR,10.0.10.9/32,Name8
+    - SRC-IP-CIDR,10.0.10.10/32,Name9
+    - SRC-IP-CIDR,10.0.10.11/32,Name10
+proxies:
+    - {name: 'Name1', rename: '🇭🇰香港-01 T 1.0x', type: trojan, server: productandservice.infralinkplus.com, port: 27101, password: edbdb7f9-6b83-4d54-c39e-0fc5e6533c72, udp: true, skip-cert-verify: true, sni: claude.1maxai.com, network: tcp}
+    - {name: 'Name2', rename: '🇭🇰香港-02 T 1.0x', type: trojan, server: productandservice.infralinkplus.com, port: 27102, password: edbdb7f9-6b83-4d54-c39e-0fc5e6533c72, udp: true, skip-cert-verify: true, sni: claude.1maxai.com, network: tcp}
+    - {name: 'Name3', rename: '🇭🇰香港-03 S 1.0x 时段2-7 0.5x', type: ss, server: productandservice.infralinkplus.com, port: 55201, password: 'MGU2Nzk1ZjI4MjNlYzk4Yw==:ZWRiZGI3ZjktNmI4My00ZA==', udp: true, cipher: 2022-blake3-aes-128-gcm}
+    - {name: 'Name4', rename: '🇭🇰香港-06 H 0.1x', type: hysteria2, server: records.hy.ecmtxt.com, port: 10443, password: edbdb7f9-6b83-4d54-c39e-0fc5e6533c72, skip-cert-verify: true, sni: records.hy.ecmtxt.com, up: 30, down: 30, hop-interval: 60}
+    - {name: 'Name5', rename: '🇭🇰香港-07 H 0.1x', type: hysteria2, server: records.hk01.ecmtxt.com, port: 10564, password: edbdb7f9-6b83-4d54-c39e-0fc5e6533c72, skip-cert-verify: true, sni: records.hk01.ecmtxt.com, up: 30, down: 30, hop-interval: 60}
+    - {name: 'Name6', rename: '🇯🇵日本-01 S 1.0x', type: ss, server: productandservice.infralinkplus.com, port: 27001, password: 'MGU2Nzk1ZjI4MjNlYzk4Yw==:ZWRiZGI3ZjktNmI4My00ZA==', udp: true, cipher: 2022-blake3-aes-128-gcm}
+    - {name: 'Name7', rename: '🇯🇵日本-02 S 1.0x', type: ss, server: productandservice.infralinkplus.com, port: 27002, password: 'MGU2Nzk1ZjI4MjNlYzk4Yw==:ZWRiZGI3ZjktNmI4My00ZA==', udp: true, cipher: 2022-blake3-aes-128-gcm}
+    - {name: 'Name8', rename: '🇯🇵日本-03 S 1.0x', type: ss, server: productandservice.infralinkplus.com, port: 22271, password: 'MGU2Nzk1ZjI4MjNlYzk4Yw==:ZWRiZGI3ZjktNmI4My00ZA==', udp: true, cipher: 2022-blake3-aes-128-gcm}
+    - {name: 'Name9', rename: '🇯🇵日本-04 S 1.0x', type: ss, server: productandservice.infralinkplus.com, port: 22269, password: 'MGU2Nzk1ZjI4MjNlYzk4Yw==:ZWRiZGI3ZjktNmI4My00ZA==', udp: true, cipher: 2022-blake3-aes-128-gcm}
+    - {name: 'Name10', rename: '🇯🇵日本-05 H 0.1x', type: hysteria2, server: records.jp01.ecmtxt.com, port: 10443, password: edbdb7f9-6b83-4d54-c39e-0fc5e6533c72, skip-cert-verify: true, sni: vgraxiw73sj1.sdkdns.vip, up: 30, down: 30, hop-interval: 60}
+   
+
 EOF
         log_info "配置文件创建成功: ${CONFIG_DIR}/config.yaml"
     else
