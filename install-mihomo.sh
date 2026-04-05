@@ -237,8 +237,7 @@ check_installation() {
     if [ -f "${CONFIG_DIR}/config.yaml" ]; then
         log_info "配置文件: ${CONFIG_DIR}/config.yaml"
     else
-        log_error "配置文件不存在"
-        exit 1
+        log_warn "配置文件不存在，请手动配置 ${CONFIG_DIR}/config.yaml"
     fi
     
     log_info "服务状态: 已设置开机启动（未运行）"
@@ -300,7 +299,24 @@ main() {
     
     create_directories
     
-    create_config
+    echo ""
+    echo "是否生成默认配置文件？"
+    echo "1. 否（默认，推荐已有配置文件的用户选择）"
+    echo "2. 是"
+    read -p "请选择 (1/2): " CONFIG_CHOICE
+    if [ -z "$CONFIG_CHOICE" ] || [ "$CONFIG_CHOICE" != "2" ]; then
+        CREATE_CONFIG="no"
+        log_info "将不生成配置文件"
+    else
+        CREATE_CONFIG="yes"
+        log_info "将生成默认配置文件"
+    fi
+    
+    if [ "$CREATE_CONFIG" = "yes" ]; then
+        create_config
+    else
+        log_info "跳过配置文件生成，请手动配置 ${CONFIG_DIR}/config.yaml"
+    fi
     
     create_systemd_service
     
