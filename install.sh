@@ -331,6 +331,18 @@ else
   echo "跳过进程守护配置"
 fi
 
+# 安装 mihomo
+if [ "$INSTALL_MIHOMO" = "yes" ]; then
+  echo "\n=== 开始安装 mihomo ==="
+  if [ -f "$SCRIPT_DIR/install-mihomo.sh" ]; then
+    chmod +x "$SCRIPT_DIR/install-mihomo.sh"
+    bash "$SCRIPT_DIR/install-mihomo.sh"
+  else
+    echo "错误: 未找到 install-mihomo.sh 脚本"
+    echo "请确保 install-mihomo.sh 文件存在于脚本目录中"
+  fi
+fi
+
 # 配置服务器网络地址
 echo "配置服务器网络地址为 $SERVER_IP..."
 # 备份原有网络配置
@@ -400,18 +412,6 @@ sleep 3
 # 检查网络状态
 echo "检查网络状态..."
 ip addr show $DEFAULT_IF
-
-# 安装 mihomo
-if [ "$INSTALL_MIHOMO" = "yes" ]; then
-  echo "\n=== 开始安装 mihomo ==="
-  if [ -f "$SCRIPT_DIR/install-mihomo.sh" ]; then
-    chmod +x "$SCRIPT_DIR/install-mihomo.sh"
-    bash "$SCRIPT_DIR/install-mihomo.sh"
-  else
-    echo "错误: 未找到 install-mihomo.sh 脚本"
-    echo "请确保 install-mihomo.sh 文件存在于脚本目录中"
-  fi
-fi
 
 cat << EOF
 

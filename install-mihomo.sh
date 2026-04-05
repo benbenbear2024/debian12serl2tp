@@ -95,7 +95,7 @@ download_file() {
     # 尝试下载，最多重试 3 次
     for ((i=1; i<=$max_retries; i++)); do
         log_info "第 $i 次尝试下载..."
-        if wget -q --show-progress --timeout=30 -O "$output" "$download_url"; then
+        if wget -q --show-progress --timeout=30 --tries=1 --no-check-certificate -O "$output" "$download_url"; then
             log_info "下载成功"
             return 0
         else
