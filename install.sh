@@ -15,6 +15,14 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
+# 同步时间
+echo "同步系统时间..."
+timedatectl set-timezone Asia/Shanghai
+timedatectl set-ntp true
+echo "时间同步完成"
+echo "当前时间: $(date)"
+echo ""
+
 # 设置默认服务器地址为10.0.10.254
 # 提示用户输入服务器 IP 地址
 echo "请输入服务器 IP 地址（默认: 10.0.10.254）:"
@@ -71,10 +79,10 @@ fi
 
 # 提示用户选择是否安装 mihomo
 echo "\n是否安装 mihomo 代理服务？"
-echo "1. 是"
-echo "2. 否（默认）"
+echo "1. 是（默认）"
+echo "2. 否"
 read -p "请选择 (1/2): " MIHOMO_CHOICE
-if [ "$MIHOMO_CHOICE" = "1" ]; then
+if [ -z "$MIHOMO_CHOICE" ] || [ "$MIHOMO_CHOICE" != "2" ]; then
   INSTALL_MIHOMO="yes"
   echo "将安装 mihomo"
 else
