@@ -1,12 +1,12 @@
-# L2TP：不要求 MPPE（链路不加密，按你的要求）
+# L2TP：兼容 Windows 客户端
 ipcp-accept-local
 ipcp-accept-remote
 ms-dns 8.8.8.8
 ms-dns 1.1.1.1
 noccp
 auth
-mtu 1410
-mru 1410
+mtu 1400
+mru 1400
 nodefaultroute
 proxyarp
 silent
@@ -16,5 +16,7 @@ name l2tp-vpn
 refuse-pap
 refuse-mschap
 require-mschap-v2
-#refuse-mppe
-# 若某客户端坚持 MPPE，可改为: # refuse-mppe 并 require-mppe-128（则变为加密 PPP）
+noipv6
+noipx
+novj
+novjccomp

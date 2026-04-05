@@ -1,2 +1,45 @@
-﻿#!/usr/bin/env bash\n# 鐢熸垚鑷 CA + 鏈嶅姟绔瘉涔︼紙渚?IKEv2 浣跨敤锛夈€傚鎴风闇€淇′换 ca-cert.pem銆?
-# 鐢ㄦ硶:\n#   VPN_SERVER_ID= vpn.example.com VPN_SERVER_IP=1.2.3.4 sudo bash scripts/gen-vpn-certs.sh\n#   浠?IP 鎷ㄥ彿鏃跺彲鍙 VPN_SERVER_ID= 鍏綉IP\nset -euo pipefail\n\nSWANCTL="${SWANCTL_ETC:-/etc/swanctl}"\nTMP="$(mktemp -d)"\ncleanup() { rm -rf "${TMP}"; }\ntrap cleanup EXIT\n\nID="${VPN_SERVER_ID:?璁剧疆 VPN_SERVER_ID锛堜富鏈哄悕鎴?IP锛岄』涓?Windows銆屾湇鍔″櫒鍦板潃銆嶄竴鑷达級}"\nIP="${VPN_SERVER_IP:-}"\n\nsan="DNS:${ID}"\nif [[ -n "${IP}" ]]; then\n  san="${san},IP:${IP}"\nelif [[ "${ID}" =~ ^[0-9.]+$ ]]; then\n  san="IP:${ID}"\nfi\n\nopenssl genrsa -out "${TMP}/ca-key.pem" 4096\nopenssl req -x509 -new -nodes -key "${TMP}/ca-key.pem" -sha256 -days 3650 \\n  -subj "/CN=VPN IKEv2 CA" -out "${TMP}/ca-cert.pem"\n\nopenssl genrsa -out "${TMP}/vpn-server-key.pem" 4096\nopenssl req -new -key "${TMP}/vpn-server-key.pem" -out "${TMP}/server.csr" -subj "/CN=${ID}"\n\nprintf "subjectAltName=%s\n" "${san}" > "${TMP}/ext.cnf"\nopenssl x509 -req -in "${TMP}/server.csr" \\n  -CA "${TMP}/ca-cert.pem" -CAkey "${TMP}/ca-key.pem" -CAcreateserial \\n  -out "${TMP}/vpn-server-cert.pem" -days 825 -sha256 -extfile "${TMP}/ext.cnf"\n\ninstall -d -m 0755 "${SWANCTL}/private" "${SWANCTL}/x509" "${SWANCTL}/x509ca"\ninstall -m 0600 "${TMP}/vpn-server-key.pem" "${SWANCTL}/private/vpn-server-key.pem"\ninstall -m 0644 "${TMP}/vpn-server-cert.pem" "${SWANCTL}/x509/vpn-server-cert.pem"\ninstall -m 0644 "${TMP}/ca-cert.pem" "${SWANCTL}/x509ca/vpn-ca-cert.pem"\n\nOUT_DIR="${VPN_CERT_EXPORT:-/root/vpn-ikev2-certs}"\ninstall -d -m 0700 "${OUT_DIR}"\ncp -f "${TMP}/ca-cert.pem" "${OUT_DIR}/ca-cert.pem"\nchmod 0644 "${OUT_DIR}/ca-cert.pem"\n\necho "宸插啓鍏?${SWANCTL}锛涜灏?${OUT_DIR}/ca-cert.pem 瀵煎叆 Windows銆屽彈淇′换鐨勬牴璇佷功棰佸彂鏈烘瀯銆嶃€?\n
+#!/bin/bash
+set -euo pipefail
+
+SWANCTL="${SWANCTL_ETC:-/etc/swanctl}"
+TMP="$(mktemp -d)"
+cleanup() { rm -rf "${TMP}"; }
+trap cleanup EXIT
+
+ID="${VPN_SERVER_ID:?请设置 VPN_SERVER_ID}"
+IP="${VPN_SERVER_IP:-}"
+
+san="DNS:${ID}"
+if [[ -n "${IP}" ]]; then
+  san="${san},IP:${IP}"
+elif [[ "${ID}" =~ ^[0-9.]+$ ]]; then
+  san="IP:${ID}"
+fi
+
+echo "生成 CA 证书..."
+openssl genrsa -out "${TMP}/ca-key.pem" 4096
+openssl req -x509 -new -nodes -key "${TMP}/ca-key.pem" -sha256 -days 3650 \
+  -subj "/CN=VPN IKEv2 CA" -out "${TMP}/ca-cert.pem"
+
+echo "生成服务器证书..."
+openssl genrsa -out "${TMP}/vpn-server-key.pem" 4096
+openssl req -new -key "${TMP}/vpn-server-key.pem" -out "${TMP}/server.csr" -subj "/CN=${ID}"
+
+printf "subjectAltName=%s\n" "${san}" > "${TMP}/ext.cnf"
+openssl x509 -req -in "${TMP}/server.csr" \
+  -CA "${TMP}/ca-cert.pem" -CAkey "${TMP}/ca-key.pem" -CAcreateserial \
+  -out "${TMP}/vpn-server-cert.pem" -days 825 -sha256 -extfile "${TMP}/ext.cnf"
+
+echo "安装证书..."
+install -d -m 0755 "${SWANCTL}/private" "${SWANCTL}/x509" "${SWANCTL}/x509ca"
+install -m 0600 "${TMP}/vpn-server-key.pem" "${SWANCTL}/private/vpn-server-key.pem"
+install -m 0644 "${TMP}/vpn-server-cert.pem" "${SWANCTL}/x509/vpn-server-cert.pem"
+install -m 0644 "${TMP}/ca-cert.pem" "${SWANCTL}/x509ca/vpn-ca-cert.pem"
+
+OUT_DIR="${VPN_CERT_EXPORT:-/root/vpn-ikev2-certs}"
+install -d -m 0700 "${OUT_DIR}"
+cp -f "${TMP}/ca-cert.pem" "${OUT_DIR}/ca-cert.pem"
+chmod 0644 "${OUT_DIR}/ca-cert.pem"
+
+echo "证书已安装到 ${SWANCTL}"
+echo "CA 证书已导出到 ${OUT_DIR}/ca-cert.pem"

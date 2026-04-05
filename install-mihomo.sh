@@ -115,7 +115,14 @@ download_file() {
 download_mihomo() {
     local arch=$(detect_arch)
     local os=$(detect_os)
-    local filename="mihomo-linux-${arch}-${MIHOMO_VERSION}.gz"
+    local filename
+    
+    if [ "$arch" = "amd64" ]; then
+        filename="mihomo-linux-${arch}-compatible-${MIHOMO_VERSION}.gz"
+    else
+        filename="mihomo-linux-${arch}-${MIHOMO_VERSION}.gz"
+    fi
+    
     local github_url="https://github.com/MetaCubeX/mihomo/releases/download/${MIHOMO_VERSION}/${filename}"
     
     log_info "系统架构: $arch"
