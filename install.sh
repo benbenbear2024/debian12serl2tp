@@ -91,77 +91,86 @@ apt-get install -y pptpd ppp iptables openssl xl2tpd strongswan
 echo "安装必要的工具包..."
 apt-get install -y net-tools iptables-persistent
 
+# 安装 SoftEther VPN 服务器
+echo "安装 SoftEther VPN 服务器..."
+# 下载并安装 SoftEther VPN Server
+wget -O /tmp/softether-vpnserver.tar.gz https://github.com/SoftEtherVPN/SoftEtherVPN_Stable/releases/download/v4.42-9798-rtm/softether-vpnserver-v4.42-9798-rtm-2023.06.30-linux-x64-64bit.tar.gz
+mkdir -p /opt/softether
+cd /opt/softether
+tar -xzf /tmp/softether-vpnserver.tar.gz
+cd vpnserver
+make
+chmod +x vpnserver vpncmd
+
+# 创建 systemd 服务文件
+echo "创建 SoftEther VPN 服务..."
+cat > /etc/systemd/system/softether-vpnserver.service << 'EOF'
+[Unit]
+Description=SoftEther VPN Server
+After=network.target
+
+[Service]
+Type=forking
+ExecStart=/opt/softether/vpnserver/vpnserver start
+ExecStop=/opt/softether/vpnserver/vpnserver stop
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# 启动并启用服务
+systemctl daemon-reload
+systemctl enable softether-vpnserver
+systemctl start softether-vpnserver
+
+echo "SoftEther VPN 服务器安装完成"
+echo "检查 SoftEther VPN 服务状态..."
+systemctl status softether-vpnserver --no-pager
+
+# 配置 SoftEther VPN 服务器
+echo "配置 SoftEther VPN 服务器..."
+/opt/softether/vpnserver/vpncmd localhost:5555 /SERVER /CMD ServerPasswordSet 88888888
+/opt/softether/vpnserver/vpncmd localhost:5555 /SERVER /CMD HubCreate VPN /PASSWORD:88888888
+/opt/softether/vpnserver/vpncmd localhost:5555 /SERVER /HUB:VPN /CMD SecureNatEnable
+/opt/softether/vpnserver/vpncmd localhost:5555 /SERVER /HUB:VPN /CMD UserCreate user1 /PASSWORD:88888888
+/opt/softether/vpnserver/vpncmd localhost:5555 /SERVER /HUB:VPN /CMD UserPasswordSet user1 /PASSWORD:88888888
+
+# 配置 L2TP/IPsec
+echo "配置 L2TP/IPsec..."
+/opt/softether/vpnserver/vpncmd localhost:5555 /SERVER /HUB:VPN /CMD L2TPEnable yes /L2TPDualStack yes /L2TPPsk 88888888
+
+# 配置 SSTP
+echo "配置 SSTP..."
+/opt/softether/vpnserver/vpncmd localhost:5555 /SERVER /HUB:VPN /CMD SSTPEnable yes
+
+# 配置 PPTP
+echo "配置 PPTP..."
+/opt/softether/vpnserver/vpncmd localhost:5555 /SERVER /HUB:VPN /CMD PPTPEnable yes
+
+# 生成自签名证书
+echo "生成 SSL 证书..."
+/opt/softether/vpnserver/vpncmd localhost:5555 /SERVER /CMD ServerCertCreate /CN:$SERVER_IP /O:VPN /OU:Server /C:CN
+
+echo "SoftEther VPN 服务器配置完成"
+
 echo "配置 DNS 服务器..."
 cat > /etc/resolv.conf << 'EOF'
 nameserver 8.8.8.8
 nameserver 1.1.1.1
 EOF
 
-echo "配置 PPTP..."
-install -m 0644 "$FILES/pptpd.conf" /etc/pptpd.conf
-install -m 0644 "$FILES/options.pptpd" /etc/ppp/options.pptpd
+# 启用并重启 SoftEther VPN 服务...
+echo "启用并重启 SoftEther VPN 服务..."
+systemctl enable softether-vpnserver || echo "警告：softether-vpnserver 服务启用失败"
+systemctl restart softether-vpnserver || echo "警告：softether-vpnserver 服务重启失败"
+systemctl status softether-vpnserver --no-pager
 
-echo "配置 L2TP..."
-cp /etc/xl2tpd/xl2tpd.conf /etc/xl2tpd/xl2tpd.conf.bak 2>/dev/null || true
-install -m 0644 "$FILES/xl2tpd.conf" /etc/xl2tpd/xl2tpd.conf
-install -m 0644 "$FILES/options.xl2tpd" /etc/ppp/options.xl2tpd
-
-echo "配置 IPsec (strongSwan)..."
-cat > /etc/ipsec.conf << 'EOF'
-config setup
-    charondebug="ike 2, knl 2, cfg 2"
-
-conn l2tp
-    keyexchange=ikev1
-    ike=aes128-sha1-modp2048,aes128-sha1-modp1024
-    esp=aes128-sha1
-    type=transport
-    left=%defaultroute
-    leftprotoport=17/1701
-    right=%any
-    rightprotoport=17/1701
-    authby=secret
-    auto=add
-EOF
-
-echo "配置 IPsec 预共享密钥..."
-cat > /etc/ipsec.secrets << 'EOF'
-: PSK "88888888"
-EOF
-chmod 600 /etc/ipsec.secrets
-
-echo "生成用户账号..."
-umask 077
-{
-  echo '# CHAP secrets — PPTP / L2TP 账号相同'
-  echo '# client  server  secret  IP'
-  for i in $(seq 1 200); do
-    ip=10.0.10.$i
-    echo "user$i * 88888888 $ip"
-  done
-} > "$CHAP.new"
-mv "$CHAP.new" "$CHAP"
-chmod 600 "$CHAP"
-
-echo "启用并重启 PPTP 服务..."
-systemctl enable pptpd || echo "警告：pptpd 服务启用失败"
-systemctl restart pptpd || echo "警告：pptpd 服务重启失败"
-systemctl status pptpd --no-pager
-
-echo "启用并重启 L2TP 服务..."
-systemctl enable xl2tpd || echo "警告：xl2tpd 服务启用失败"
-systemctl restart xl2tpd || echo "警告：xl2tpd 服务重启失败"
-systemctl status xl2tpd --no-pager
-
-echo "启用并重启 IPsec 服务..."
-systemctl enable strongswan-starter || echo "警告：strongswan-starter 服务启用失败"
-systemctl restart strongswan-starter || echo "警告：strongswan-starter 服务重启失败"
-systemctl status strongswan-starter --no-pager
-
-echo "已设置 PPTP、L2TP 和 IPsec 服务开机自动启动"
+echo "已设置 SoftEther VPN 服务开机自动启动"
 
 echo "检查 VPN 相关端口状态..."
-netstat -tuln | grep -E '1723|1701|500|4500'
+netstat -tuln | grep -E '1723|1701|500|4500|443|5555'
 
 echo "检查 IP 转发状态..."
 IP_FORWARD=$(sysctl -n net.ipv4.ip_forward 2>/dev/null)
@@ -225,6 +234,8 @@ if [ "$FIREWALL_INSTALL" = "yes" ]; then
   iptables -A INPUT -p udp --dport 1701 -j ACCEPT
   iptables -A INPUT -p udp --dport 500 -j ACCEPT
   iptables -A INPUT -p udp --dport 4500 -j ACCEPT
+  iptables -A INPUT -p tcp --dport 443 -j ACCEPT
+  iptables -A INPUT -p tcp --dport 5555 -j ACCEPT
 
   iptables -A INPUT -p tcp --dport 7890 -j ACCEPT
   iptables -A INPUT -p tcp --dport 7891 -j ACCEPT
@@ -270,33 +281,13 @@ if [ "$DAEMON_INSTALL" = "yes" ]; then
   echo "创建 VPN 服务守护脚本..."
   cat > /usr/local/bin/vpn-daemon.sh << 'EOF'
 #!/bin/bash
-if ! systemctl is-active --quiet pptpd; then
-  echo "$(date '+%Y-%m-%d %H:%M:%S') - PPTP 服务未运行，正在启动..." >> /var/log/vpn-daemon.log
-  systemctl start pptpd
-  if systemctl is-active --quiet pptpd; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - PPTP 服务启动成功" >> /var/log/vpn-daemon.log
+if ! systemctl is-active --quiet softether-vpnserver; then
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - SoftEther VPN 服务未运行，正在启动..." >> /var/log/vpn-daemon.log
+  systemctl start softether-vpnserver
+  if systemctl is-active --quiet softether-vpnserver; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - SoftEther VPN 服务启动成功" >> /var/log/vpn-daemon.log
   else
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - PPTP 服务启动失败" >> /var/log/vpn-daemon.log
-  fi
-fi
-
-if ! systemctl is-active --quiet xl2tpd; then
-  echo "$(date '+%Y-%m-%d %H:%M:%S') - L2TP 服务未运行，正在启动..." >> /var/log/vpn-daemon.log
-  systemctl start xl2tpd
-  if systemctl is-active --quiet xl2tpd; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - L2TP 服务启动成功" >> /var/log/vpn-daemon.log
-  else
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - L2TP 服务启动失败" >> /var/log/vpn-daemon.log
-  fi
-fi
-
-if ! systemctl is-active --quiet strongswan-starter; then
-  echo "$(date '+%Y-%m-%d %H:%M:%S') - IPsec 服务未运行，正在启动..." >> /var/log/vpn-daemon.log
-  systemctl start strongswan-starter
-  if systemctl is-active --quiet strongswan-starter; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - IPsec 服务启动成功" >> /var/log/vpn-daemon.log
-  else
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - IPsec 服务启动失败" >> /var/log/vpn-daemon.log
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - SoftEther VPN 服务启动失败" >> /var/log/vpn-daemon.log
   fi
 fi
 EOF
@@ -392,10 +383,10 @@ ip addr show $DEFAULT_IF
 cat << EOF
 
 === 安装完成 ===
-账号: user1 ~ user200  密码: 88888888
+账号: user1  密码: 88888888
 
 地址池:
-  PPTP/L2TP: 10.0.10.2 - 10.0.10.201（服务器端 10.0.10.1）
+  SoftEther VPN: 192.168.30.10-192.168.30.254（服务器端 192.168.30.1）
 
 服务端身份: $VPN_SERVER_ID
   Windows「服务器地址」必须与设置一致（同一域名或同一 IP）。
@@ -405,24 +396,30 @@ Windows 添加 VPN:
     - 类型: PPTP
     - 服务器: $VPN_SERVER_ID
     - 登录信息类型: 用户名和密码
-    - 用户名/密码: userN / 88888888
+    - 用户名/密码: user1 / 88888888
   
   • L2TP 连接:
     - 类型: L2TP/IPsec 预共享密钥
     - 服务器: $VPN_SERVER_ID
     - 预共享密钥: 88888888
     - 登录信息类型: 用户名和密码
-    - 用户名/密码: userN / 88888888
+    - 用户名/密码: user1 / 88888888
+  
+  • SSTP 连接:
+    - 类型: SSTP
+    - 服务器: $VPN_SERVER_ID
+    - 登录信息类型: 用户名和密码
+    - 用户名/密码: user1 / 88888888
 
 放行端口:
-  - VPN 相关: PPTP (TCP 1723 + GRE)、L2TP (UDP 1701)、IPsec (UDP 500, 4500)
+  - VPN 相关: PPTP (TCP 1723 + GRE)、L2TP (UDP 1701)、IPsec (UDP 500, 4500)、SSTP (TCP 443)
+  - SoftEther 管理: TCP 5555
   - 常用协议: SSH (TCP 22)、HTTP (TCP 80)、HTTPS (TCP 443)、FTP (TCP 21)、SMTP (TCP 25)、POP3 (TCP 110)、IMAP (TCP 143)、DNS (UDP 53)、RDP (TCP 3389)
   - 其他: TCP 7890, 7891, 7892, 9090, 9999
 
 日志查看:
-  - PPTP: journalctl -u pptpd -f
-  - L2TP: journalctl -u xl2tpd -f
-  - IPsec: journalctl -u strongswan-starter -f
+  - SoftEther VPN: systemctl status softether-vpnserver
+  - SoftEther 详细日志: /opt/softether/vpnserver/server_log/
 EOF
 
 if [ "$INSTALL_MIHOMO" = "yes" ]; then
