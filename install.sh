@@ -97,30 +97,85 @@ echo "安装 SoftEther VPN 服务器..."
 SOFTETHER_URL="https://github.com/SoftEtherVPN/SoftEtherVPN_Stable/releases/download/v4.42-9798-rtm/softether-vpnserver-v4.42-9798-rtm-2023.06.30-linux-x64-64bit.tar.gz"
 
 # 从 github cdn.txt 读取前 5 个代理域名
-GITHUB_PROXIES=($(head -n 5 "$SCRIPT_DIR/github cdn.txt" | tr -d '\r'))
+echo "读取 GitHub 代理域名..."
+# 使用更兼容的方式处理代理列表
+GITHUB_PROXIES_FILE="$SCRIPT_DIR/github cdn.txt"
+if [ -f "$GITHUB_PROXIES_FILE" ]; then
+  echo "找到代理配置文件: $GITHUB_PROXIES_FILE"
+  # 读取前 5 个代理域名
+  PROXY1=$(head -n 1 "$GITHUB_PROXIES_FILE" | tr -d '\r')
+  PROXY2=$(head -n 2 "$GITHUB_PROXIES_FILE" | tail -n 1 | tr -d '\r')
+  PROXY3=$(head -n 3 "$GITHUB_PROXIES_FILE" | tail -n 1 | tr -d '\r')
+  PROXY4=$(head -n 4 "$GITHUB_PROXIES_FILE" | tail -n 1 | tr -d '\r')
+  PROXY5=$(head -n 5 "$GITHUB_PROXIES_FILE" | tail -n 1 | tr -d '\r')
+  echo "代理域名列表:"
+  echo "1. $PROXY1"
+  echo "2. $PROXY2"
+  echo "3. $PROXY3"
+  echo "4. $PROXY4"
+  echo "5. $PROXY5"
+else
+  echo "警告：未找到 github cdn.txt 文件，将使用默认代理"
+  PROXY1="https://gh.llkk.cc/"
+  PROXY2="https://gitproxy.click/"
+  PROXY3="https://github.tmby.shop/"
+  PROXY4="https://gh.bugdey.us.kg/"
+  PROXY5="https://gitproxy.mrhjx.cn/"
+fi
 
 # 尝试下载 SoftEther VPN Server
+echo "开始下载 SoftEther VPN 服务器..."
 download_success=0
-for proxy in "${GITHUB_PROXIES[@]}"; do
-  echo "尝试使用代理: $proxy"
-  if wget -q --show-progress -O /tmp/softether-vpnserver.tar.gz "${proxy}${SOFTETHER_URL}"; then
+
+# 尝试第一个代理
+echo "尝试使用代理 1: $PROXY1"
+if wget -q --show-progress -O /tmp/softether-vpnserver.tar.gz "${PROXY1}${SOFTETHER_URL}"; then
+  echo "下载成功！"
+  download_success=1
+else
+  echo "代理 1 下载失败，尝试下一个代理..."
+  
+  # 尝试第二个代理
+  echo "尝试使用代理 2: $PROXY2"
+  if wget -q --show-progress -O /tmp/softether-vpnserver.tar.gz "${PROXY2}${SOFTETHER_URL}"; then
     echo "下载成功！"
     download_success=1
-    break
   else
-    echo "下载失败，尝试下一个代理..."
-  fi
-done
-
-# 如果所有代理都失败，尝试直接下载
-if [ $download_success -eq 0 ]; then
-  echo "所有代理下载失败，尝试直接从 GitHub 下载..."
-  if wget -q --show-progress -O /tmp/softether-vpnserver.tar.gz "$SOFTETHER_URL"; then
-    echo "直接下载成功！"
-    download_success=1
-  else
-    echo "错误：无法下载 SoftEther VPN 服务器，请检查网络连接"
-    exit 1
+    echo "代理 2 下载失败，尝试下一个代理..."
+    
+    # 尝试第三个代理
+    echo "尝试使用代理 3: $PROXY3"
+    if wget -q --show-progress -O /tmp/softether-vpnserver.tar.gz "${PROXY3}${SOFTETHER_URL}"; then
+      echo "下载成功！"
+      download_success=1
+    else
+      echo "代理 3 下载失败，尝试下一个代理..."
+      
+      # 尝试第四个代理
+      echo "尝试使用代理 4: $PROXY4"
+      if wget -q --show-progress -O /tmp/softether-vpnserver.tar.gz "${PROXY4}${SOFTETHER_URL}"; then
+        echo "下载成功！"
+        download_success=1
+      else
+        echo "代理 4 下载失败，尝试下一个代理..."
+        
+        # 尝试第五个代理
+        echo "尝试使用代理 5: $PROXY5"
+        if wget -q --show-progress -O /tmp/softether-vpnserver.tar.gz "${PROXY5}${SOFTETHER_URL}"; then
+          echo "下载成功！"
+          download_success=1
+        else
+          echo "所有代理下载失败，尝试直接从 GitHub 下载..."
+          if wget -q --show-progress -O /tmp/softether-vpnserver.tar.gz "$SOFTETHER_URL"; then
+            echo "直接下载成功！"
+            download_success=1
+          else
+            echo "错误：无法下载 SoftEther VPN 服务器，请检查网络连接"
+            exit 1
+          fi
+        fi
+      fi
+    fi
   fi
 fi
 
