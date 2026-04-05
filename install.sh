@@ -185,18 +185,13 @@ log_syslog
 pptp
 l2tp
 auth_mschap_v2
-chap-secrets
 
 [core]
-log-error=/var/log/accel-ppp/core.log
 thread-count=4
 
 [ppp]
-verbose=1
 auth=mschapv2
 mppe=require
-lcp-echo-interval=30
-lcp-echo-failure=3
 
 [pptp]
 enable=1
@@ -207,10 +202,6 @@ local-ip=10.0.10.254
 enable=1
 ip-range=10.0.10.1-10.0.10.200
 local-ip=10.0.10.254
-
-[dns]
-8.8.8.8
-1.1.1.1
 
 [chap-secrets]
 file=/etc/ppp/chap-secrets
@@ -359,14 +350,14 @@ if [ "$FIREWALL_INSTALL" = "yes" ]; then
   iptables -A INPUT -p udp --dport 53 -j ACCEPT
   iptables -A INPUT -p tcp --dport 3389 -j ACCEPT
 
-  
-  iptables -I FORWARD 1 -d 10.0.10.254 -j ACCEPT
-  iptables -A FORWARD -s 10.0.10.0/24 -d 10.0.10.0/24 -j DROP
-
+  # 修复 FORWARD 链规则
+  iptables -F FORWARD
+  iptables -A FORWARD -s 10.0.10.0/24 -j ACCEPT
+  iptables -A FORWARD -d 10.0.10.0/24 -j ACCEPT
 
   WAN_IF=$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')
   if [ -n "$WAN_IF" ]; then
-    iptables -t nat -A POSTROUTING -o "$WAN_IF" -j MASQUERADE
+    iptables -t nat -A POSTROUTING -s 10.0.10.0/24 -o "$WAN_IF" -j MASQUERADE
     echo "已添加 NAT 转发规则（出口网卡: $WAN_IF）"
   fi
 
