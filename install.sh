@@ -249,16 +249,8 @@ nameserver 8.8.8.8
 nameserver 1.1.1.1
 EOF
 
-# 启用并重启 SoftEther VPN 服务...
-echo "启用并重启 SoftEther VPN 服务..."
-systemctl enable softether-vpnserver || echo "警告：softether-vpnserver 服务启用失败"
-systemctl restart softether-vpnserver || echo "警告：softether-vpnserver 服务重启失败"
-systemctl status softether-vpnserver --no-pager
-
-echo "已设置 SoftEther VPN 服务开机自动启动"
-
 echo "检查 VPN 相关端口状态..."
-netstat -tuln | grep -E '1723|1701|500|4500|443|5555'
+netstat -tuln | grep -E '1723|1701|500|4500'
 
 echo "检查 IP 转发状态..."
 IP_FORWARD=$(sysctl -n net.ipv4.ip_forward 2>/dev/null)
