@@ -6,10 +6,11 @@ CONFIG_DIR="/etc/mihomo"
 LOG_DIR="/var/log/mihomo"
 
 GITHUB_MIRRORS=(
-    "https://ghproxy.homeboyc.cn/"
-    "https://shrill-pond-3e81.hunsh.workers.dev/"
+    "https://ghproxy.com/"
     "https://mirror.ghproxy.com/"
-    "https://gh-proxy.com/"
+    "https://gh.api.99988866.xyz/"
+    "https://api.github.com/"
+    "https://github.com/"
 )
 
 RED='\033[0;31m'
@@ -78,6 +79,7 @@ download_file() {
     local url=$1
     local output=$2
     local mirror_index=$3
+    local max_retries=3
     
     if [ $mirror_index -ge ${#GITHUB_MIRRORS[@]} ]; then
         log_error "所有镜像站点都尝试失败，请检查网络连接"
@@ -90,14 +92,21 @@ download_file() {
     log_info "尝试使用镜像: $mirror"
     log_info "下载地址: $download_url"
     
-    if wget -q --show-progress -O "$output" "$download_url"; then
-        log_info "下载成功"
-        return 0
-    else
-        log_warn "镜像 $mirror 下载失败，尝试下一个镜像..."
-        rm -f "$output"
-        download_file "$url" "$output" $((mirror_index + 1))
-    fi
+    # 尝试下载，最多重试 3 次
+    for ((i=1; i<=$max_retries; i++)); do
+        log_info "第 $i 次尝试下载..."
+        if wget -q --show-progress --timeout=30 -O "$output" "$download_url"; then
+            log_info "下载成功"
+            return 0
+        else
+            log_warn "第 $i 次尝试失败，等待 3 秒后重试..."
+            sleep 3
+        fi
+    done
+    
+    log_warn "镜像 $mirror 下载失败，尝试下一个镜像..."
+    rm -f "$output"
+    download_file "$url" "$output" $((mirror_index + 1))
 }
 
 download_mihomo() {
