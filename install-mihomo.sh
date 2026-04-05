@@ -172,6 +172,7 @@ log-level: info
 ipv6: true
 external-controller: :9999
 external-ui: ui
+external-ui-url: "https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip"
 secret: "88888888"
         
 tun: {enable: true, stack: system, device: utun, auto-route: true, dns-hijack: ["tcp://8.8.8.8:53", "8.8.8.8:53"]}
@@ -349,15 +350,16 @@ main() {
     
     echo ""
     echo "是否生成默认配置文件？"
-    echo "1. 否（默认，推荐已有配置文件的用户选择）"
-    echo "2. 是"
+    echo "1. 是（默认，推荐已有配置文件的用户选择）"
+    echo "2. 否"
+
     read -p "请选择 (1/2): " CONFIG_CHOICE
     if [ -z "$CONFIG_CHOICE" ] || [ "$CONFIG_CHOICE" != "2" ]; then
-        CREATE_CONFIG="no"
-        log_info "将不生成配置文件"
-    else
         CREATE_CONFIG="yes"
-        log_info "将生成默认配置文件"
+        log_info "将生成配置文件"
+    else
+        CREATE_CONFIG="no"
+        log_info "将不生成默认配置文件"
     fi
     
     if [ "$CREATE_CONFIG" = "yes" ]; then

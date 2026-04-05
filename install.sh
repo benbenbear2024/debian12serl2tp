@@ -14,6 +14,7 @@ fi
 echo "同步系统时间..."
 timedatectl set-timezone Asia/Shanghai
 timedatectl set-ntp true
+systemctl restart systemd-timesyncd
 echo "时间同步完成"
 echo "当前时间: $(date)"
 echo ""
@@ -135,7 +136,7 @@ umask 077
   echo '# CHAP secrets — PPTP / L2TP 账号相同'
   echo '# client  server  secret  IP'
   for i in $(seq 1 200); do
-    ip=10.0.10.$((i+1))
+    ip=10.0.10.$i
     echo "user$i * 88888888 $ip"
   done
 } > "$CHAP.new"
@@ -241,7 +242,10 @@ if [ "$FIREWALL_INSTALL" = "yes" ]; then
   iptables -A INPUT -p udp --dport 53 -j ACCEPT
   iptables -A INPUT -p tcp --dport 3389 -j ACCEPT
 
+  
+  iptables -I FORWARD 1 -d 10.0.10.254 -j ACCEPT
   iptables -A FORWARD -s 10.0.10.0/24 -d 10.0.10.0/24 -j DROP
+
 
   WAN_IF=$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')
   if [ -n "$WAN_IF" ]; then
