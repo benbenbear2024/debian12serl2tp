@@ -94,7 +94,36 @@ apt-get install -y net-tools iptables-persistent
 # 安装 SoftEther VPN 服务器
 echo "安装 SoftEther VPN 服务器..."
 # 下载并安装 SoftEther VPN Server
-wget -O /tmp/softether-vpnserver.tar.gz https://github.com/SoftEtherVPN/SoftEtherVPN_Stable/releases/download/v4.42-9798-rtm/softether-vpnserver-v4.42-9798-rtm-2023.06.30-linux-x64-64bit.tar.gz
+SOFTETHER_URL="https://github.com/SoftEtherVPN/SoftEtherVPN_Stable/releases/download/v4.42-9798-rtm/softether-vpnserver-v4.42-9798-rtm-2023.06.30-linux-x64-64bit.tar.gz"
+
+# 从 github cdn.txt 读取前 5 个代理域名
+GITHUB_PROXIES=($(head -n 5 "$SCRIPT_DIR/github cdn.txt" | tr -d '\r'))
+
+# 尝试下载 SoftEther VPN Server
+download_success=0
+for proxy in "${GITHUB_PROXIES[@]}"; do
+  echo "尝试使用代理: $proxy"
+  if wget -q --show-progress -O /tmp/softether-vpnserver.tar.gz "${proxy}${SOFTETHER_URL}"; then
+    echo "下载成功！"
+    download_success=1
+    break
+  else
+    echo "下载失败，尝试下一个代理..."
+  fi
+done
+
+# 如果所有代理都失败，尝试直接下载
+if [ $download_success -eq 0 ]; then
+  echo "所有代理下载失败，尝试直接从 GitHub 下载..."
+  if wget -q --show-progress -O /tmp/softether-vpnserver.tar.gz "$SOFTETHER_URL"; then
+    echo "直接下载成功！"
+    download_success=1
+  else
+    echo "错误：无法下载 SoftEther VPN 服务器，请检查网络连接"
+    exit 1
+  fi
+fi
+
 mkdir -p /opt/softether
 cd /opt/softether
 tar -xzf /tmp/softether-vpnserver.tar.gz
