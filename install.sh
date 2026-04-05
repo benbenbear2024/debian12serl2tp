@@ -93,6 +93,13 @@ apt-get install -y net-tools iptables-persistent
 
 # 安装 accel-ppp
 echo "安装 accel-ppp..."
+# 添加 accel-ppp 安装源
+echo "添加 accel-ppp 安装源..."
+apt-get install -y apt-transport-https ca-certificates wget
+wget -O /etc/apt/trusted.gpg.d/accel-ppp.gpg https://repo.accel-ppp.org/keys/accel-ppp.gpg
+echo "deb https://repo.accel-ppp.org/debian/ bookworm main" > /etc/apt/sources.list.d/accel-ppp.list
+apt-get update -qq
+
 # 安装 accel-ppp 及其依赖
 apt-get install -y accel-ppp accel-ppp-pptp accel-ppp-l2tp accel-ppp-ipoe
 
