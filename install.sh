@@ -123,19 +123,19 @@ enable=0
 
 [pptp]
 enable=1
-ip-range=10.0.10.2-10.0.10.201
-local-ip=10.0.10.1
+ip-range=10.0.10.1-10.0.10.200
+local-ip=10.0.10.254
 
 [l2tp]
 enable=1
-ip-range=10.0.10.2-10.0.10.201
-local-ip=10.0.10.1
+ip-range=10.0.10.1-10.0.10.200
+local-ip=10.0.10.254
 
 [auth]
 mschap-v2=1
 
 [client-ip-range]
-10.0.10.2-10.0.10.201
+10.0.10.1-10.0.10.200
 
 [log]
 syslog=accel-ppp
@@ -383,7 +383,7 @@ cat << EOF
 账号: user1 ~ user200  密码: 88888888
 
 地址池:
-  PPTP/L2TP: 10.0.10.2 - 10.0.10.201（服务器端 10.0.10.1）
+  PPTP/L2TP: 10.0.10.1 - 10.0.10.200（服务器端 10.0.10.254）
 
 服务端身份: $VPN_SERVER_ID
   Windows「服务器地址」必须与设置一致（同一域名或同一 IP）。
