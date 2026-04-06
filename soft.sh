@@ -57,12 +57,7 @@ iface $DEFAULT_IF inet static
     dns-nameservers 8.8.8.8 1.1.1.1
 EOF
 
-log "立即应用新的 IP 地址..."
-ip addr flush dev $DEFAULT_IF
-ip addr add $SERVER_IP/24 dev $DEFAULT_IF
-ip link set $DEFAULT_IF up
-ip route add default via $SERVER_GATEWAY 2>/dev/null || true
-log "IP 地址已更新为: $SERVER_IP"
+log "网络配置文件已更新，将在脚本最后应用（避免 SSH 中断）"
 
 # ==================== 3. 内核参数 ====================
 log "启用 IP 转发并禁用反向路径过滤"
@@ -314,11 +309,20 @@ cat << EOF
 
 📌 日志文件: /var/log/vpn_session_control.log
 ==========================================
-建议重启服务器: reboot
+⚠️  重要：需要重启服务器或手动应用 IP 配置
+==========================================
+当前网络配置文件已更新为: $SERVER_IP/24
+
+请选择以下方式之一使配置生效：
+1. 重启服务器（推荐）: reboot
+2. 手动应用 IP（会中断 SSH 连接）:
+   查看网卡名称: cat /etc/network/interfaces | grep '^auto' | grep -v lo
+   应用命令:
+   ip addr flush dev <网卡名>
+   ip addr add $SERVER_IP/24 dev <网卡名>
+   ip link set <网卡名> up
+   ip route add default via $SERVER_GATEWAY
 EOF
 
-log "重启网络服务以应用静态 IP 配置..."
-systemctl restart networking || log "网络重启可能需手动检查"
-sleep 2
-
-log "安装结束。建议执行 reboot 重启服务器以使所有配置完全生效。"
+log "脚本执行完成！"
+log "请使用 'reboot' 命令重启服务器以应用所有配置。"
