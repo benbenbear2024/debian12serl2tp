@@ -134,18 +134,28 @@ EOF
 
 /usr/local/vpnserver/vpncmd localhost /SERVER < /tmp/se_cfg.txt || log "SoftEther 基础配置有警告，继续"
 
-# 创建200个用户并设置密码（无需静态 IP）
-log "创建用户并设置密码（仅用于 L2TP 认证，IP 动态分配）..."
+# 创建200个用户并设置密码
+log "创建用户并设置密码..."
+USER_COUNT=0
 for i in $(seq 1 200); do
-    # 删除可能存在的旧用户（忽略错误）
-    echo -e "Hub DEFAULT\nUserDelete user$i" | /usr/local/vpnserver/vpncmd localhost /SERVER > /dev/null 2>&1 || true
-    # 创建新用户
-    echo -e "Hub DEFAULT\nUserCreate user$i /GROUP:none /REALNAME:none /NOTE:none" | \
-        /usr/local/vpnserver/vpncmd localhost /SERVER > /dev/null 2>&1 || true
-    # 设置密码
-    echo -e "Hub DEFAULT\nUserPasswordSet user$i /PASSWORD:$FIXED_PASSWORD" | \
-        /usr/local/vpnserver/vpncmd localhost /SERVER > /dev/null 2>&1 || true
+    # 创建用户
+    if echo -e "Hub DEFAULT\nUserCreate user$i /GROUP:none /REALNAME:none /NOTE:none" | \
+        /usr/local/vpnserver/vpncmd localhost /SERVER > /dev/null 2>&1; then
+        # 设置密码
+        if echo -e "Hub DEFAULT\nUserPasswordSet user$i /PASSWORD:$FIXED_PASSWORD" | \
+            /usr/local/vpnserver/vpncmd localhost /SERVER > /dev/null 2>&1; then
+            USER_COUNT=$((USER_COUNT + 1))
+        fi
+    fi
 done
+
+# 验证用户创建
+ACTUAL_COUNT=$(echo -e "Hub DEFAULT\nUserList" | /usr/local/vpnserver/vpncmd localhost /SERVER 2>/dev/null | grep -c "User Name" || echo "0")
+log "用户创建完成：预期 200 个，实际创建 $ACTUAL_COUNT 个"
+
+if [ "$ACTUAL_COUNT" -lt 10 ]; then
+    log "警告：用户创建数量过少，请检查 SoftEther 服务状态"
+fi
 
 log "SoftEther 配置完成，用户将获得动态 IP (10.0.10.202-254)"
 systemctl restart vpnserver
