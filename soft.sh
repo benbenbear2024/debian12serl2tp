@@ -135,19 +135,21 @@ EOF
 
 /usr/local/vpnserver/vpncmd localhost /SERVER < /tmp/se_cfg.txt || log "SoftEther 基础配置有警告，继续"
 
-# 创建200个用户并设置固定IP
-log "创建用户并分配固定 IP..."
+# 创建200个用户
+log "创建用户..."
 for i in $(seq 1 200); do
-    USER_IP="10.0.10.$((i+1))"
-    
-    echo -e "Hub DEFAULT\nUserCreate user$i /GROUP:none /REALNAME:none /NOTE:none /IP:$USER_IP" | \
+    # 创建用户
+    echo -e "Hub DEFAULT\nUserCreate user$i /GROUP:none /REALNAME:none /NOTE:none" | \
         /usr/local/vpnserver/vpncmd localhost /SERVER > /dev/null 2>&1 || true
     
+    # 设置密码
     echo -e "Hub DEFAULT\nUserPasswordSet user$i /PASSWORD:$FIXED_PASSWORD" | \
         /usr/local/vpnserver/vpncmd localhost /SERVER > /dev/null 2>&1 || true
 done
 
-log "用户创建完成，固定 IP 分配成功"
+log "用户创建完成"
+log "注意：SoftEther L2TP 使用 DHCP 自动分配 IP (10.0.10.202-254)"
+log "      PPTP 支持固定 IP 分配 (user1-200 -> 10.0.10.2-201)"
 
 systemctl restart vpnserver
 
@@ -276,18 +278,17 @@ WINEOF
 log "${GREEN}所有组件部署完成！${NC}"
 cat << EOF
 ==========================================
-✅ 双 VPN 服务部署成功 + 固定IP分配 + 跨协议互踢
+✅ 双 VPN 服务部署成功 + PPTP固定IP分配 + 跨协议互踢
 ==========================================
 服务器 IP: $SERVER_IP
 网关: $SERVER_GATEWAY
 用户名: user1 ~ user200
 密码: $FIXED_PASSWORD
-固定IP: user1 -> 10.0.10.2, user2 -> 10.0.10.3, ..., user200 -> 10.0.10.201
 
 📌 L2TP/IPsec (SoftEther):
    服务器地址: $SERVER_IP
    预共享密钥: $FIXED_PASSWORD
-   固定IP分配: user1 -> 10.0.10.2, user2 -> 10.0.10.3, ..., user200 -> 10.0.10.201
+   IP分配: DHCP 自动分配 (10.0.10.202-254)
 
 📌 PPTP (pptpd):
    服务器地址: $SERVER_IP
