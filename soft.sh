@@ -125,6 +125,7 @@ systemctl status vpnserver --no-pager | grep -q "active (running)" || error "Sof
 log "配置 SoftEther: L2TP/IPsec、用户创建、固定IP分配"
 
 # 配置 IPsec 和 SecureNAT
+log "配置 IPsec 和 SecureNAT..."
 cat > /tmp/se_cfg.txt << EOF
 Hub DEFAULT
 IPsecEnable /L2TP:yes /L2TPRAW:yes /ETHERIP:no /PSK:$FIXED_PASSWORD /DEFAULTHUB:DEFAULT
@@ -132,20 +133,18 @@ SecureNATEnable
 DhcpSet /START:10.0.10.202 /END:10.0.10.254 /MASK:255.255.255.0 /EXPIRE:7200 /GW:$SERVER_IP /DNS:8.8.8.8 /DNS2:1.1.1.1
 EOF
 
-echo "Exit" >> /tmp/se_cfg.txt
-
-/usr/local/vpnserver/vpncmd localhost /SERVER /CMD < /tmp/se_cfg.txt || log "SoftEther 基础配置有警告，继续"
+/usr/local/vpnserver/vpncmd localhost /SERVER < /tmp/se_cfg.txt || log "SoftEther 基础配置有警告，继续"
 
 # 创建200个用户并设置固定IP
 log "创建用户并分配固定 IP..."
 for i in $(seq 1 200); do
     USER_IP="10.0.10.$((i+1))"
     
-    /usr/local/vpnserver/vpncmd localhost /SERVER /CMD "Hub DEFAULT" \
-        "UserCreate user$i /GROUP:none /REALNAME:none /NOTE:none /IP:$USER_IP" > /dev/null 2>&1 || true
+    echo -e "Hub DEFAULT\nUserCreate user$i /GROUP:none /REALNAME:none /NOTE:none /IP:$USER_IP" | \
+        /usr/local/vpnserver/vpncmd localhost /SERVER > /dev/null 2>&1 || true
     
-    /usr/local/vpnserver/vpncmd localhost /SERVER /CMD "Hub DEFAULT" \
-        "UserPasswordSet user$i /PASSWORD:$FIXED_PASSWORD" > /dev/null 2>&1 || true
+    echo -e "Hub DEFAULT\nUserPasswordSet user$i /PASSWORD:$FIXED_PASSWORD" | \
+        /usr/local/vpnserver/vpncmd localhost /SERVER > /dev/null 2>&1 || true
 done
 
 log "用户创建完成，固定 IP 分配成功"
