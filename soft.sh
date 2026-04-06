@@ -38,13 +38,16 @@ apt update -qq
 apt install -y wget build-essential gcc make net-tools nftables pptpd psmisc \
     libssl-dev libreadline-dev zlib1g-dev
 
-# ==================== 2. 配置静态 IP ====================
+# ==================== 2. 配置静态 IP（只写配置，不立即应用）====================
 log "配置服务器静态 IP: $SERVER_IP/24"
 DEFAULT_IF=$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')
 if [ -z "$DEFAULT_IF" ]; then
     DEFAULT_IF=$(ls /sys/class/net | grep -E 'eth0|ens|eno' | head -n1)
 fi
 [ -z "$DEFAULT_IF" ] && error "无法检测到网卡"
+
+# 备份原有配置
+cp /etc/network/interfaces /etc/network/interfaces.bak 2>/dev/null || true
 
 cat > /etc/network/interfaces << EOF
 auto lo
@@ -57,7 +60,8 @@ iface $DEFAULT_IF inet static
     dns-nameservers 8.8.8.8 1.1.1.1
 EOF
 
-log "网络配置文件已更新，将在脚本最后应用（避免 SSH 中断）"
+log "静态 IP 配置已写入 /etc/network/interfaces，当前 IP 未改变（避免断开 SSH）"
+log "请在所有安装完成后手动重启服务器，或执行: systemctl restart networking"
 
 # ==================== 3. 内核参数 ====================
 log "启用 IP 转发并禁用反向路径过滤"
@@ -116,36 +120,34 @@ systemctl start vpnserver || error "SoftEther 服务启动失败"
 sleep 2
 systemctl status vpnserver --no-pager | grep -q "active (running)" || error "SoftEther 未正常运行"
 
-# ==================== 5. 配置 SoftEther (L2TP/IPsec + 固定IP) ====================
-log "配置 SoftEther: L2TP/IPsec、用户创建、固定IP分配"
+# ==================== 5. 配置 SoftEther (L2TP/IPsec + 动态IP池) ====================
+log "配置 SoftEther: L2TP/IPsec，启用 SecureNAT，动态 IP 池 10.0.10.202-254"
 
-# 配置 IPsec 和 SecureNAT
-log "配置 IPsec 和 SecureNAT..."
+# 配置 IPsec，启用 SecureNAT 并设置 DHCP 池（动态分配）
 cat > /tmp/se_cfg.txt << EOF
 Hub DEFAULT
 IPsecEnable /L2TP:yes /L2TPRAW:yes /ETHERIP:no /PSK:$FIXED_PASSWORD /DEFAULTHUB:DEFAULT
+SetHub /AuthType:0
 SecureNATEnable
 DhcpSet /START:10.0.10.202 /END:10.0.10.254 /MASK:255.255.255.0 /EXPIRE:7200 /GW:$SERVER_IP /DNS:8.8.8.8 /DNS2:1.1.1.1
 EOF
 
 /usr/local/vpnserver/vpncmd localhost /SERVER < /tmp/se_cfg.txt || log "SoftEther 基础配置有警告，继续"
 
-# 创建200个用户
-log "创建用户..."
+# 创建200个用户并设置密码（无需静态 IP）
+log "创建用户并设置密码（仅用于 L2TP 认证，IP 动态分配）..."
 for i in $(seq 1 200); do
-    # 创建用户
+    # 删除可能存在的旧用户（忽略错误）
+    echo -e "Hub DEFAULT\nUserDelete user$i" | /usr/local/vpnserver/vpncmd localhost /SERVER > /dev/null 2>&1 || true
+    # 创建新用户
     echo -e "Hub DEFAULT\nUserCreate user$i /GROUP:none /REALNAME:none /NOTE:none" | \
         /usr/local/vpnserver/vpncmd localhost /SERVER > /dev/null 2>&1 || true
-    
     # 设置密码
     echo -e "Hub DEFAULT\nUserPasswordSet user$i /PASSWORD:$FIXED_PASSWORD" | \
         /usr/local/vpnserver/vpncmd localhost /SERVER > /dev/null 2>&1 || true
 done
 
-log "用户创建完成"
-log "注意：SoftEther L2TP 使用 DHCP 自动分配 IP (10.0.10.202-254)"
-log "      PPTP 支持固定 IP 分配 (user1-200 -> 10.0.10.2-201)"
-
+log "SoftEther 配置完成，用户将获得动态 IP (10.0.10.202-254)"
 systemctl restart vpnserver
 
 # ==================== 6. 配置 pptpd (PPTP + 固定IP) ====================
@@ -161,8 +163,10 @@ EOF
 sed -i 's/#ms-dns/ms-dns/g' /etc/ppp/pptpd-options
 sed -i 's/ms-dns 10.0.0.1/ms-dns 8.8.8.8\nms-dns 1.1.1.1/' /etc/ppp/pptpd-options
 sed -i '/^maxconn/d' /etc/ppp/pptpd-options
+# 确保服务器名称为 pptpd
+grep -q "^name pptpd" /etc/ppp/pptpd-options || echo "name pptpd" >> /etc/ppp/pptpd-options
 
-# 添加用户到 chap-secrets，指定固定IP
+# 生成 chap-secrets 文件（固定 IP）
 log "生成 PPTP 用户账号（固定 IP 分配）..."
 cat > /etc/ppp/chap-secrets << 'EOF'
 # Secrets for authentication using CHAP
@@ -175,10 +179,6 @@ for i in $(seq 1 200); do
 done
 chmod 600 /etc/ppp/chap-secrets
 
-# 验证文件
-if [ ! -s /etc/ppp/chap-secrets ]; then
-    error "chap-secrets 文件生成失败"
-fi
 log "PPTP 用户生成完成，验证前 5 个用户："
 head -8 /etc/ppp/chap-secrets | tail -5
 
@@ -229,37 +229,57 @@ exit 0
 SCRIPT
 chmod +x /usr/local/bin/softether_onconnect.sh
 
+# 为所有用户设置连接时执行的脚本（onconnect）
 for i in $(seq 1 200); do
     /usr/local/vpnserver/vpncmd localhost /SERVER /CMD "Hub DEFAULT" UserSet "user$i" /ONCONNECT:"/usr/local/bin/softether_onconnect.sh user$i" > /dev/null 2>&1
 done
 
 # ==================== 8. 配置防火墙 (nftables) ====================
-log "配置 nftables 防火墙"
+log "配置 nftables 防火墙（完整规则）"
+
+# 加载内核模块
 modprobe nf_nat
 modprobe ip_gre
 modprobe esp4
 
+# 清空并重建规则集
 nft flush ruleset
 
+# NAT 表（IP 伪装）
 nft add table nat
 nft add chain nat postrouting '{ type nat hook postrouting priority 100; }'
 nft add rule nat postrouting ip saddr $VPN_CIDR masquerade
 
+# Filter 表（防火墙）
 nft add table inet filter
 nft add chain inet filter input '{ type filter hook input priority 0; policy drop; }'
-nft add rule inet filter input ct state established,related accept
-nft add rule inet filter input iif lo accept
-nft add rule inet filter input tcp dport 22 accept
-nft add rule inet filter input tcp dport 1723 accept
-nft add rule inet filter input tcp dport 443 accept
-nft add rule inet filter input tcp dport 5555 accept
-nft add rule inet filter input udp dport { 500, 4500, 1701 } accept
-nft add rule inet filter input ip protocol esp accept
-nft add rule inet filter input ip protocol gre accept
-nft add rule inet filter input icmp type echo-request accept
-
 nft add chain inet filter forward '{ type filter hook forward priority 0; policy accept; }'
 
+# 基本允许规则
+nft add rule inet filter input ct state established,related accept
+nft add rule inet filter input iif lo accept
+
+# 管理端口
+nft add rule inet filter input tcp dport 22 accept
+
+# PPTP
+nft add rule inet filter input tcp dport 1723 accept
+nft add rule inet filter input ip protocol gre accept
+
+# L2TP/IPsec
+nft add rule inet filter input udp dport 500 accept
+nft add rule inet filter input udp dport 4500 accept
+nft add rule inet filter input udp dport 1701 accept
+nft add rule inet filter input ip protocol esp accept
+
+# SoftEther 管理
+nft add rule inet filter input tcp dport 443 accept
+nft add rule inet filter input tcp dport 5555 accept
+
+# ICMP (ping)
+nft add rule inet filter input icmp type echo-request accept
+
+# 保存规则
 nft list ruleset > /etc/nftables.conf
 systemctl enable nftables
 systemctl restart nftables
@@ -288,19 +308,19 @@ cat << EOF
 ==========================================
 ✅ 双 VPN 服务部署成功 + PPTP固定IP分配 + 跨协议互踢
 ==========================================
-服务器 IP: $SERVER_IP
+服务器 IP: $SERVER_IP (当前可能未生效，需要重启)
 网关: $SERVER_GATEWAY
 用户名: user1 ~ user200
 密码: $FIXED_PASSWORD
 
-📌 L2TP/IPsec (SoftEther):
+📌 L2TP/IPsec (SoftEther)：
    服务器地址: $SERVER_IP
    预共享密钥: $FIXED_PASSWORD
-   IP分配: DHCP 自动分配 (10.0.10.202-254)
+   IP分配: 动态 IP 池 10.0.10.202-254（每次连接可能不同）
 
-📌 PPTP (pptpd):
+📌 PPTP (pptpd)：
    服务器地址: $SERVER_IP
-   固定IP分配: user1 -> 10.0.10.2, user2 -> 10.0.10.3, ..., user200 -> 10.0.10.201
+   固定IP分配: user1→10.0.10.2, user2→10.0.10.3, …, user200→10.0.10.201
 
 📌 跨协议互踢功能已启用（同一用户不能同时通过PPTP和L2TP登录）
 
@@ -309,20 +329,11 @@ cat << EOF
 
 📌 日志文件: /var/log/vpn_session_control.log
 ==========================================
-⚠️  重要：需要重启服务器或手动应用 IP 配置
+⚠️ 重要提示：
+   1. 服务器 IP 配置文件已更新为 $SERVER_IP，但当前会话仍使用旧 IP。
+   2. 请手动重启服务器（执行 reboot）以使新 IP 生效。
+   3. 如果当前 SSH 连接 IP 不是 $SERVER_IP，重启后请使用新 IP 连接。
 ==========================================
-当前网络配置文件已更新为: $SERVER_IP/24
-
-请选择以下方式之一使配置生效：
-1. 重启服务器（推荐）: reboot
-2. 手动应用 IP（会中断 SSH 连接）:
-   查看网卡名称: cat /etc/network/interfaces | grep '^auto' | grep -v lo
-   应用命令:
-   ip addr flush dev <网卡名>
-   ip addr add $SERVER_IP/24 dev <网卡名>
-   ip link set <网卡名> up
-   ip route add default via $SERVER_GATEWAY
 EOF
 
-log "脚本执行完成！"
-log "请使用 'reboot' 命令重启服务器以应用所有配置。"
+log "安装结束。请手动执行 reboot 重启服务器使所有配置生效。"
