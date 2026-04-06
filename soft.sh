@@ -17,7 +17,7 @@ echo "同步系统时间..."
 timedatectl set-timezone Asia/Shanghai
 timedatectl set-ntp true
 systemctl restart systemd-timesyncd
-sleep 3s
+sleep 6s
 echo "时间同步完成"
 echo "当前时间: $(date)"
 echo ""
@@ -133,8 +133,8 @@ EOF
 
 for i in $(seq 1 200); do
     IP_ADDR="10.0.10.$((i+1))"
-    # 使用用户名作为标识，SoftEther 会自动匹配
-    echo "DhcpTableAdd $IP_ADDR /MAC:none /NOTE:user$i" >> /tmp/dhcp_static.txt
+    MAC_ADDR=$(printf "00-00-00-00-01-%02X" $i)
+    echo "SecureNatHostTableAdd /MAC:$MAC_ADDR /IP:$IP_ADDR /NOTE:user$i" >> /tmp/dhcp_static.txt
 done
 
 echo "Exit" >> /tmp/dhcp_static.txt
