@@ -57,6 +57,13 @@ iface $DEFAULT_IF inet static
     dns-nameservers 8.8.8.8 1.1.1.1
 EOF
 
+log "立即应用新的 IP 地址..."
+ip addr flush dev $DEFAULT_IF
+ip addr add $SERVER_IP/24 dev $DEFAULT_IF
+ip link set $DEFAULT_IF up
+ip route add default via $SERVER_GATEWAY 2>/dev/null || true
+log "IP 地址已更新为: $SERVER_IP"
+
 # ==================== 3. 内核参数 ====================
 log "启用 IP 转发并禁用反向路径过滤"
 cat >> /etc/sysctl.conf << EOF
