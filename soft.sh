@@ -67,10 +67,20 @@ EOF
 sysctl -p
 
 # ==================== 4. 安装 SoftEther VPN ====================
-# log "下载并编译 SoftEther VPN Server"
+log "安装 SoftEther VPN Server"
 cd /usr/local/src
+
+SOFTETHER_LOCAL="/root/softether-vpnserver-v4.43-9799-beta-2023.08.31-linux-x64-64bit.tar.gz"
 SOFTETHER_URL="https://www.softether-download.com/files/softether/v4.43-9799-beta-2023.08.31-tree/Linux/SoftEther_VPN_Server/64bit_-_Intel_x64_or_AMD64/softether-vpnserver-v4.43-9799-beta-2023.08.31-linux-x64-64bit.tar.gz"
-wget --no-check-certificate -O softether.tar.gz "$SOFTETHER_URL" || error "下载 SoftEther 失败"
+
+if [ -f "$SOFTETHER_LOCAL" ]; then
+    log "发现本地 SoftEther 安装包，使用本地文件..."
+    cp "$SOFTETHER_LOCAL" softether.tar.gz
+else
+    log "本地未找到 SoftEther 安装包，从网上下载..."
+    wget --no-check-certificate -O softether.tar.gz "$SOFTETHER_URL" || error "下载 SoftEther 失败"
+fi
+
 tar xzf softether.tar.gz
 cd vpnserver
 echo -e "1\n1\n" | make || error "编译 SoftEther 失败"
