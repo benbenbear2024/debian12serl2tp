@@ -17,7 +17,7 @@ echo "同步系统时间..."
 timedatectl set-timezone Asia/Shanghai
 timedatectl set-ntp true
 systemctl restart systemd-timesyncd
-sleep 6s
+sleep 12s
 echo "时间同步完成"
 echo "当前时间: $(date)"
 echo ""
@@ -168,11 +168,24 @@ sed -i 's/ms-dns 10.0.0.1/ms-dns 8.8.8.8\nms-dns 1.1.1.1/' /etc/ppp/pptpd-option
 sed -i '/^maxconn/d' /etc/ppp/pptpd-options
 
 # 添加用户到 chap-secrets，指定固定IP
-> /etc/ppp/chap-secrets
+log "生成 PPTP 用户账号（固定 IP 分配）..."
+cat > /etc/ppp/chap-secrets << 'EOF'
+# Secrets for authentication using CHAP
+# client    server    secret    IP addresses
+EOF
+
 for i in $(seq 1 200); do
-    echo "user$i pptpd $FIXED_PASSWORD 10.0.10.$((i+1))" >> /etc/ppp/chap-secrets
+    IP_ADDR="10.0.10.$((i+1))"
+    echo "user$i pptpd $FIXED_PASSWORD $IP_ADDR" >> /etc/ppp/chap-secrets
 done
 chmod 600 /etc/ppp/chap-secrets
+
+# 验证文件
+if [ ! -s /etc/ppp/chap-secrets ]; then
+    error "chap-secrets 文件生成失败"
+fi
+log "PPTP 用户生成完成，验证前 5 个用户："
+head -8 /etc/ppp/chap-secrets | tail -5
 
 systemctl enable pptpd
 systemctl restart pptpd || error "pptpd 启动失败"
