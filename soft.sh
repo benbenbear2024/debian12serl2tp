@@ -92,12 +92,13 @@ if [ "$CLONE_SUCCESS" = false ]; then
     if [ -f "/tmp/debian-l2tp/github cdn.txt" ] || [ -f "github cdn.txt" ]; then
         CDN_FILE="github cdn.txt"
         [ -f "/tmp/debian-l2tp/github cdn.txt" ] && CDN_FILE="/tmp/debian-l2tp/github cdn.txt"
-        while IFS= read -r proxy; do
+        # 只使用前 5 个加速链接
+        head -n 5 "$CDN_FILE" | while IFS= read -r proxy; do
             if [ -n "$proxy" ]; then
                 log "尝试加速链接: $proxy"
                 git clone --depth=1 "${proxy}${ACCEL_PPP_URL}" /tmp/accel-ppp && CLONE_SUCCESS=true && break
             fi
-        done < "$CDN_FILE"
+        done
     fi
 fi
 
