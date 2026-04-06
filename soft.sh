@@ -106,21 +106,41 @@ systemctl status vpnserver --no-pager | grep -q "active (running)" || error "Sof
 
 # ==================== 5. 配置 SoftEther (L2TP/IPsec + 固定IP) ====================
 log "配置 SoftEther: L2TP/IPsec、用户创建、固定IP分配"
+
+# 创建用户配置脚本
 cat > /tmp/se_cfg.txt << EOF
 Hub DEFAULT
 IPsecEnable /L2TP:yes /L2TPRAW:yes /ETHERIP:no /PSK:$FIXED_PASSWORD /DEFAULTHUB:DEFAULT
 SecureNATEnable
-DhcpSet /START:10.0.10.2 /END:10.0.10.201 /MASK:255.255.255.0 /EXPIRE:7200 /GW:$SERVER_IP /DNS:8.8.8.8 /DNS2:1.1.1.1
+DhcpSet /START:10.0.10.202 /END:10.0.10.254 /MASK:255.255.255.0 /EXPIRE:7200 /GW:$SERVER_IP /DNS:8.8.8.8 /DNS2:1.1.1.1
 EOF
 
+# 创建用户
 for i in $(seq 1 200); do
     echo "UserCreate user$i /GROUP:none /REALNAME:none /NOTE:none" >> /tmp/se_cfg.txt
     echo "UserPasswordSet user$i /PASSWORD:$FIXED_PASSWORD" >> /tmp/se_cfg.txt
-    echo "UserSet user$i /IP:10.0.10.$((i+1))" >> /tmp/se_cfg.txt
 done
+
 echo "Exit" >> /tmp/se_cfg.txt
 
-/usr/local/vpnserver/vpncmd localhost /SERVER /CMD < /tmp/se_cfg.txt || log "SoftEther 配置有警告，继续"
+/usr/local/vpnserver/vpncmd localhost /SERVER /CMD < /tmp/se_cfg.txt || log "SoftEther 用户创建有警告，继续"
+
+# 配置 DHCP 静态分配表（固定 IP）
+log "配置 DHCP 静态分配表..."
+cat > /tmp/dhcp_static.txt << EOF
+Hub DEFAULT
+EOF
+
+for i in $(seq 1 200); do
+    IP_ADDR="10.0.10.$((i+1))"
+    # 使用用户名作为标识，SoftEther 会自动匹配
+    echo "DhcpTableAdd $IP_ADDR /MAC:none /NOTE:user$i" >> /tmp/dhcp_static.txt
+done
+
+echo "Exit" >> /tmp/dhcp_static.txt
+
+/usr/local/vpnserver/vpncmd localhost /SERVER /CMD < /tmp/dhcp_static.txt || log "DHCP 静态分配配置有警告，继续"
+
 systemctl restart vpnserver
 
 # ==================== 6. 配置 pptpd (PPTP + 固定IP) ====================
