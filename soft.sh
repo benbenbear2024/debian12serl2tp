@@ -6,7 +6,7 @@ FIXED_PASSWORD="88888888"
 SERVER_IP="10.0.10.254"
 SERVER_GATEWAY="10.0.10.1"
 VPN_CIDR="10.0.10.0/24"
-LOG_FILE="/var/log/vpn_dual_install.log"
+LOG_FILE="/var/log/vpn_accel_install.log"
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -30,13 +30,14 @@ if [ "$(id -u)" -ne 0 ]; then
     error "请使用 root 权限运行此脚本"
 fi
 
-log "${GREEN}开始部署双 VPN 服务 (SoftEther L2TP/IPsec + pptpd PPTP) 并启用固定IP分配及跨协议互踢...${NC}"
+log "${GREEN}开始部署 VPN 服务 (accel-ppp PPTP + L2TP/IPsec) 固定IP分配...${NC}"
 
 # ==================== 1. 安装依赖 ====================
 log "安装系统依赖..."
 apt update -qq
-apt install -y wget build-essential gcc make net-tools nftables pptpd psmisc \
-    libssl-dev libreadline-dev zlib1g-dev
+apt install -y wget build-essential gcc make git cmake net-tools nftables psmisc \
+    libssl-dev libreadline-dev zlib1g-dev libpcre2-dev \
+    libnl-3-dev libnl-genl-3-dev strongswan pptpd iptables-persistent
 
 # ==================== 2. 配置静态 IP（只写配置，不立即应用）====================
 log "配置服务器静态 IP: $SERVER_IP/24"
@@ -61,7 +62,6 @@ iface $DEFAULT_IF inet static
 EOF
 
 log "静态 IP 配置已写入 /etc/network/interfaces，当前 IP 未改变（避免断开 SSH）"
-log "请在所有安装完成后手动重启服务器，或执行: systemctl restart networking"
 
 # ==================== 3. 内核参数 ====================
 log "启用 IP 转发并禁用反向路径过滤"
@@ -72,41 +72,59 @@ net.ipv4.conf.default.rp_filter=0
 EOF
 sysctl -p
 
-# ==================== 4. 安装 SoftEther VPN ====================
-log "安装 SoftEther VPN Server"
+# ==================== 4. 安装 accel-ppp ====================
+log "安装 accel-ppp..."
 cd /usr/local/src
 
-SOFTETHER_LOCAL="/root/softether-vpnserver-v4.43-9799-beta-2023.08.31-linux-x64-64bit.tar.gz"
-SOFTETHER_URL="https://www.softether-download.com/files/softether/v4.43-9799-beta-2023.08.31-tree/Linux/SoftEther_VPN_Server/64bit_-_Intel_x64_or_AMD64/softether-vpnserver-v4.43-9799-beta-2023.08.31-linux-x64-64bit.tar.gz"
+# 清理已存在的目录
+rm -rf /tmp/accel-ppp 2>/dev/null || true
 
-if [ -f "$SOFTETHER_LOCAL" ]; then
-    log "发现本地 SoftEther 安装包，使用本地文件..."
-    cp "$SOFTETHER_LOCAL" softether.tar.gz
-else
-    log "本地未找到 SoftEther 安装包，从网上下载..."
-    wget --no-check-certificate -O softether.tar.gz "$SOFTETHER_URL" || error "下载 SoftEther 失败"
+# 尝试从 GitHub 直接克隆
+ACCEL_PPP_URL="https://github.com/accel-ppp/accel-ppp.git"
+CLONE_SUCCESS=false
+
+echo "尝试从 GitHub 克隆 accel-ppp..."
+git clone --depth=1 "$ACCEL_PPP_URL" /tmp/accel-ppp && CLONE_SUCCESS=true
+
+# 如果克隆失败，尝试使用加速链接
+if [ "$CLONE_SUCCESS" = false ]; then
+    log "GitHub 克隆失败，尝试使用加速链接..."
+    if [ -f "/tmp/debian-l2tp/github cdn.txt" ] || [ -f "github cdn.txt" ]; then
+        CDN_FILE="github cdn.txt"
+        [ -f "/tmp/debian-l2tp/github cdn.txt" ] && CDN_FILE="/tmp/debian-l2tp/github cdn.txt"
+        while IFS= read -r proxy; do
+            if [ -n "$proxy" ]; then
+                log "尝试加速链接: $proxy"
+                git clone --depth=1 "${proxy}${ACCEL_PPP_URL}" /tmp/accel-ppp && CLONE_SUCCESS=true && break
+            fi
+        done < "$CDN_FILE"
+    fi
 fi
 
-tar xzf softether.tar.gz
-cd vpnserver
-echo -e "1\n1\n" | make || error "编译 SoftEther 失败"
-mkdir -p /usr/local/vpnserver
-cp -r * /usr/local/vpnserver/
-cd /usr/local/vpnserver
-chmod 600 *
-chmod 700 vpnserver vpncmd
+[ ! -d "/tmp/accel-ppp" ] && error "无法下载 accel-ppp 源码"
+
+# 编译并安装
+log "编译 accel-ppp..."
+cd /tmp/accel-ppp
+mkdir -p build && cd build
+cmake -DBUILD_DRIVER=TRUE -DRADIUS=FALSE ..
+make -j$(nproc) || error "编译 accel-ppp 失败"
+make install || error "安装 accel-ppp 失败"
+
+# 创建日志目录
+mkdir -p /var/log/accel-ppp
+chown nobody:nogroup /var/log/accel-ppp
 
 # 创建 systemd 服务
-cat > /etc/systemd/system/vpnserver.service << 'EOF'
+cat > /etc/systemd/system/accel-ppp.service << 'EOF'
 [Unit]
-Description=SoftEther VPN Server
+Description=Accel-PPP VPN Server
 After=network.target
 
 [Service]
-Type=forking
-ExecStart=/usr/local/vpnserver/vpnserver start
-ExecStop=/usr/local/vpnserver/vpnserver stop
-Restart=on-failure
+Type=simple
+ExecStart=/usr/local/sbin/accel-pppd -c /usr/local/etc/accel-ppp/accel-ppp.conf
+Restart=always
 RestartSec=5
 LimitNOFILE=65536
 
@@ -115,145 +133,121 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable vpnserver
-systemctl start vpnserver || error "SoftEther 服务启动失败"
-sleep 2
-systemctl status vpnserver --no-pager | grep -q "active (running)" || error "SoftEther 未正常运行"
+systemctl enable accel-ppp
 
-# ==================== 5. 配置 SoftEther (L2TP/IPsec + 动态IP池) ====================
-log "配置 SoftEther: L2TP/IPsec，启用 SecureNAT，动态 IP 池 10.0.10.202-254"
+# ==================== 5. 配置 accel-ppp ====================
+log "配置 accel-ppp..."
+mkdir -p /usr/local/etc/accel-ppp
 
-# 配置 IPsec，启用 SecureNAT 并设置 DHCP 池（动态分配）
-cat > /tmp/se_cfg.txt << EOF
-Hub DEFAULT
-IPsecEnable /L2TP:yes /L2TPRAW:yes /ETHERIP:no /PSK:$FIXED_PASSWORD /DEFAULTHUB:DEFAULT
-SetHub /AuthType:0
-SecureNATEnable
-DhcpSet /START:10.0.10.202 /END:10.0.10.254 /MASK:255.255.255.0 /EXPIRE:7200 /GW:$SERVER_IP /DNS:8.8.8.8 /DNS2:1.1.1.1
+cat > /usr/local/etc/accel-ppp/accel-ppp.conf << EOF
+[modules]
+log_syslog
+pptp
+l2tp
+auth_mschap_v2
+
+[core]
+thread-count=4
+
+[ppp]
+verbose=1
+auth=mschapv2
+mppe=require
+lcp-echo-interval=30
+lcp-echo-failure=3
+
+[pptp]
+enable=1
+ip-range=10.0.10.2-10.0.10.201
+local-ip=$SERVER_IP
+
+[l2tp]
+enable=1
+ip-range=10.0.10.2-10.0.10.201
+local-ip=$SERVER_IP
+
+[dns]
+server=8.8.8.8
+server=1.1.1.1
+
+[chap-secrets]
+file=/etc/ppp/chap-secrets
 EOF
 
-/usr/local/vpnserver/vpncmd localhost /SERVER < /tmp/se_cfg.txt || log "SoftEther 基础配置有警告，继续"
+# ==================== 6. 生成用户账号和固定 IP 分配配置 ====================
+log "生成用户账号和固定 IP 分配配置..."
 
-# 创建200个用户并设置密码
-log "创建用户并设置密码..."
-USER_COUNT=0
+# 清空原有文件
+> /etc/ppp/chap-secrets
+
+# 批量生成账号密码+固定IP
+# user1 -> 10.0.10.2, user2 -> 10.0.10.3, ..., user200 -> 10.0.10.201
 for i in $(seq 1 200); do
-    # 创建用户
-    if echo -e "Hub DEFAULT\nUserCreate user$i /GROUP:none /REALNAME:none /NOTE:none" | \
-        /usr/local/vpnserver/vpncmd localhost /SERVER > /dev/null 2>&1; then
-        # 设置密码
-        if echo -e "Hub DEFAULT\nUserPasswordSet user$i /PASSWORD:$FIXED_PASSWORD" | \
-            /usr/local/vpnserver/vpncmd localhost /SERVER > /dev/null 2>&1; then
-            USER_COUNT=$((USER_COUNT + 1))
-        fi
-    fi
+    echo "user$i * $FIXED_PASSWORD 10.0.10.$((i+1))" >> /etc/ppp/chap-secrets
 done
 
-# 验证用户创建
-ACTUAL_COUNT=$(echo -e "Hub DEFAULT\nUserList" | /usr/local/vpnserver/vpncmd localhost /SERVER 2>/dev/null | grep -c "User Name" || echo "0")
-log "用户创建完成：预期 200 个，实际创建 $ACTUAL_COUNT 个"
-
-if [ "$ACTUAL_COUNT" -lt 10 ]; then
-    log "警告：用户创建数量过少，请检查 SoftEther 服务状态"
-fi
-
-log "SoftEther 配置完成，用户将获得动态 IP (10.0.10.202-254)"
-systemctl restart vpnserver
-
-# ==================== 6. 配置 pptpd (PPTP + 固定IP) ====================
-log "配置 pptpd"
-cat > /etc/pptpd.conf << EOF
-option /etc/ppp/pptpd-options
-logwtmp
-localip $SERVER_IP
-remoteip 10.0.10.2-201
-EOF
-
-# 配置 DNS，并确保没有 maxconn 行
-sed -i 's/#ms-dns/ms-dns/g' /etc/ppp/pptpd-options
-sed -i 's/ms-dns 10.0.0.1/ms-dns 8.8.8.8\nms-dns 1.1.1.1/' /etc/ppp/pptpd-options
-sed -i '/^maxconn/d' /etc/ppp/pptpd-options
-# 确保服务器名称为 pptpd
-grep -q "^name pptpd" /etc/ppp/pptpd-options || echo "name pptpd" >> /etc/ppp/pptpd-options
-
-# 生成 chap-secrets 文件（固定 IP）
-log "生成 PPTP 用户账号（固定 IP 分配）..."
-cat > /etc/ppp/chap-secrets << 'EOF'
-# Secrets for authentication using CHAP
-# client    server    secret    IP addresses
-EOF
-
-for i in $(seq 1 200); do
-    IP_ADDR="10.0.10.$((i+1))"
-    echo "user$i pptpd $FIXED_PASSWORD $IP_ADDR" >> /etc/ppp/chap-secrets
-done
 chmod 600 /etc/ppp/chap-secrets
 
-log "PPTP 用户生成完成，验证前 5 个用户："
-head -8 /etc/ppp/chap-secrets | tail -5
+log "用户账号生成完成，验证前 10 个用户："
+head -11 /etc/ppp/chap-secrets | tail -10
 
-systemctl enable pptpd
-systemctl restart pptpd || error "pptpd 启动失败"
-systemctl status pptpd --no-pager | grep -q "active (running)" || error "pptpd 未正常运行"
+USER_COUNT=$(grep -c "^user" /etc/ppp/chap-secrets 2>/dev/null || echo "0")
+log "共生成 $USER_COUNT 个用户账号"
 
-# ==================== 7. 创建跨协议互踢脚本 ====================
-log "创建会话控制脚本"
+# ==================== 7. 安装并配置 strongSwan（IPsec 支持）====================
+log "安装并配置 strongSwan（IPsec 支持）..."
 
-cat > /usr/local/bin/check_softether_session.sh << 'SCRIPT'
-#!/bin/bash
-USERNAME="$1"
-/usr/local/vpnserver/vpncmd localhost /SERVER /CMD "Hub DEFAULT" SessionList 2>/dev/null | grep -q "| $USERNAME |"
-exit $?
-SCRIPT
-chmod +x /usr/local/bin/check_softether_session.sh
+# 配置 IPsec
+cat > /etc/ipsec.conf << EOF
+config setup
+    charondebug="ike 2, knl 2, cfg 2"
+    uniqueids=no
 
-cat > /usr/local/bin/kill_pptp_user.sh << 'SCRIPT'
-#!/bin/bash
-USERNAME="$1"
-pid=$(ps aux | grep "pppd call pptpd" | grep "name $USERNAME" | awk '{print $2}')
-if [ -n "$pid" ]; then
-    kill -9 $pid
-    echo "$(date) - Killed PPTP session for $USERNAME" >> /var/log/vpn_session_control.log
-fi
-SCRIPT
-chmod +x /usr/local/bin/kill_pptp_user.sh
+conn l2tp
+    keyexchange=ikev1
+    ike=aes128-sha1-modp2048,aes128-sha1-modp1024
+    esp=aes128-sha1
+    type=transport
+    left=%defaultroute
+    leftprotoport=17/1701
+    right=%any
+    rightprotoport=17/1701
+    authby=secret
+    auto=add
+EOF
 
-mkdir -p /etc/ppp/ip-up.d
-cat > /etc/ppp/ip-up.d/90-check-softether << 'SCRIPT'
-#!/bin/bash
-USERNAME="$6"
-if [ -z "$USERNAME" ]; then exit 0; fi
-if /usr/local/bin/check_softether_session.sh "$USERNAME"; then
-    logger "PPTP: User $USERNAME already in SoftEther, disconnecting current PPTP"
-    kill -9 $PPPD_PID
-fi
-SCRIPT
-chmod +x /etc/ppp/ip-up.d/90-check-softether
+# 配置预共享密钥
+cat > /etc/ipsec.secrets << EOF
+%any %any : PSK "$FIXED_PASSWORD"
+EOF
 
-cat > /usr/local/bin/softether_onconnect.sh << 'SCRIPT'
-#!/bin/bash
-USERNAME="$1"
-echo "$(date) - L2TP user $USERNAME connected, killing PPTP sessions" >> /var/log/vpn_session_control.log
-/usr/local/bin/kill_pptp_user.sh "$USERNAME"
-exit 0
-SCRIPT
-chmod +x /usr/local/bin/softether_onconnect.sh
+chmod 600 /etc/ipsec.secrets
 
-# 为所有用户设置连接时执行的脚本（onconnect）
-for i in $(seq 1 200); do
-    /usr/local/vpnserver/vpncmd localhost /SERVER /CMD "Hub DEFAULT" UserSet "user$i" /ONCONNECT:"/usr/local/bin/softether_onconnect.sh user$i" > /dev/null 2>&1
-done
+# 启动并启用 strongSwan 服务
+systemctl enable strongswan-starter
+systemctl restart strongswan-starter
+sleep 2
+systemctl status strongswan-starter --no-pager | grep -q "active (running)" || log "警告：strongSwan 未正常运行"
 
-# ==================== 8. 配置防火墙 (nftables) ====================
-log "配置 nftables 防火墙（完整规则）"
+# ==================== 8. 启动 accel-ppp 服务 =====================
+log "启动 accel-ppp 服务..."
+systemctl start accel-ppp
+sleep 3
+systemctl status accel-ppp --no-pager | grep -q "active (running)" || {
+    log "警告：accel-ppp 启动异常，检查日志..."
+    journalctl -u accel-ppp -n 20 --no-pager 2>&1 | tail -15
+}
+
+# ==================== 9. 配置防火墙 (nftables) ====================
+log "配置 nftables 防火墙..."
 
 # 加载内核模块
-modprobe nf_nat
-modprobe ip_gre
-modprobe esp4
+modprobe nf_nat 2>/dev/null || true
+modprobe ip_gre 2>/dev/null || true
+modprobe esp4 2>/dev/null || true
 
 # 清空并重建规则集
-nft flush ruleset
+nft flush ruleset 2>/dev/null || true
 
 # NAT 表（IP 伪装）
 nft add table nat
@@ -282,19 +276,20 @@ nft add rule inet filter input udp dport 4500 accept
 nft add rule inet filter input udp dport 1701 accept
 nft add rule inet filter input ip protocol esp accept
 
-# SoftEther 管理
-nft add rule inet filter input tcp dport 443 accept
-nft add rule inet filter input tcp dport 5555 accept
-
 # ICMP (ping)
 nft add rule inet filter input icmp type echo-request accept
+
+# 常用端口
+nft add rule inet filter input tcp dport 80 accept
+nft add rule inet filter input tcp dport 443 accept
+nft add rule inet filter input tcp dport 3389 accept
 
 # 保存规则
 nft list ruleset > /etc/nftables.conf
 systemctl enable nftables
 systemctl restart nftables
 
-# ==================== 9. 生成 Windows 修复脚本 ====================
+# ==================== 10. 生成 Windows 修复脚本 ====================
 cat > /root/Windows-VPN-Fix.bat << 'WINEOF'
 @echo off
 echo 修复 Windows VPN 连接问题（请以管理员身份运行）
@@ -312,32 +307,40 @@ echo 修复完成，请重启电脑后测试 VPN
 pause
 WINEOF
 
-# ==================== 10. 完成输出 ====================
+# ==================== 11. 完成输出 ====================
 log "${GREEN}所有组件部署完成！${NC}"
 cat << EOF
 ==========================================
-✅ 双 VPN 服务部署成功 + PPTP固定IP分配 + 跨协议互踢
+✅ VPN 服务部署成功 (accel-ppp PPTP + L2TP/IPsec)
 ==========================================
 服务器 IP: $SERVER_IP (当前可能未生效，需要重启)
 网关: $SERVER_GATEWAY
 用户名: user1 ~ user200
 密码: $FIXED_PASSWORD
 
-📌 L2TP/IPsec (SoftEther)：
+📌 PPTP 连接：
    服务器地址: $SERVER_IP
-   预共享密钥: $FIXED_PASSWORD
-   IP分配: 动态 IP 池 10.0.10.202-254（每次连接可能不同）
+   用户名: userN (如 user1, user50, user200)
+   密码: $FIXED_PASSWORD
+   固定IP: user1→10.0.10.2, user2→10.0.10.3, …, user200→10.0.10.201
 
-📌 PPTP (pptpd)：
+📌 L2TP/IPsec 连接：
    服务器地址: $SERVER_IP
-   固定IP分配: user1→10.0.10.2, user2→10.0.10.3, …, user200→10.0.10.201
+   预共享密钥(PSK): $FIXED_PASSWORD
+   用户名: userN (如 user1, user50, user200)
+   密码: $FIXED_PASSWORD
+   固定IP: user1→10.0.10.2, user2→10.0.10.3, …, user200→10.0.10.201
 
-📌 跨协议互踢功能已启用（同一用户不能同时通过PPTP和L2TP登录）
+📌 放行端口:
+   PPTP: TCP 1723 + GRE
+   L2TP/IPsec: UDP 500, 4500, 1701 + ESP
 
 📌 Windows 修复脚本: /root/Windows-VPN-Fix.bat
    (下载到 Windows 以管理员运行并重启)
 
-📌 日志文件: /var/log/vpn_session_control.log
+📌 日志查看:
+   accel-ppp: journalctl -u accel-ppp -f
+   strongSwan: journalctl -u strongswan-starter -f
 ==========================================
 ⚠️ 重要提示：
    1. 服务器 IP 配置文件已更新为 $SERVER_IP，但当前会话仍使用旧 IP。
