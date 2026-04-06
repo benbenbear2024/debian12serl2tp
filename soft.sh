@@ -67,7 +67,7 @@ EOF
 sysctl -p
 
 # ==================== 4. 安装 SoftEther VPN ====================
-log "下载并编译 SoftEther VPN Server"
+# log "下载并编译 SoftEther VPN Server"
 cd /usr/local/src
 SOFTETHER_URL="https://www.softether-download.com/files/softether/v4.43-9799-beta-2023.08.31-tree/Linux/SoftEther_VPN_Server/64bit_-_Intel_x64_or_AMD64/softether-vpnserver-v4.43-9799-beta-2023.08.31-linux-x64-64bit.tar.gz"
 wget --no-check-certificate -O softether.tar.gz "$SOFTETHER_URL" || error "下载 SoftEther 失败"
@@ -112,7 +112,7 @@ cat > /tmp/se_cfg.txt << EOF
 Hub DEFAULT
 IPsecEnable /L2TP:yes /L2TPRAW:yes /ETHERIP:no /PSK:$FIXED_PASSWORD /DEFAULTHUB:DEFAULT
 SecureNATEnable
-DhcpSet /START:10.0.10.202 /END:10.0.10.254 /MASK:255.255.255.0 /EXPIRE:7200 /GW:$SERVER_IP /DNS:8.8.8.8 /DNS2:1.1.1.1
+DhcpSet /START:10.0.10.202 /END:10.0.10.250 /MASK:255.255.255.0 /EXPIRE:7200 /GW:$SERVER_IP /DNS:8.8.8.8 /DNS2:1.1.1.1
 EOF
 
 # 创建用户
@@ -125,21 +125,8 @@ echo "Exit" >> /tmp/se_cfg.txt
 
 /usr/local/vpnserver/vpncmd localhost /SERVER /CMD < /tmp/se_cfg.txt || log "SoftEther 用户创建有警告，继续"
 
-# 配置 DHCP 静态分配表（固定 IP）
-log "配置 DHCP 静态分配表..."
-cat > /tmp/dhcp_static.txt << EOF
-Hub DEFAULT
-EOF
-
-for i in $(seq 1 200); do
-    IP_ADDR="10.0.10.$((i+1))"
-    MAC_ADDR=$(printf "00-00-00-00-01-%02X" $i)
-    echo "SecureNatHostTableAdd /MAC:$MAC_ADDR /IP:$IP_ADDR /NOTE:user$i" >> /tmp/dhcp_static.txt
-done
-
-echo "Exit" >> /tmp/dhcp_static.txt
-
-/usr/local/vpnserver/vpncmd localhost /SERVER /CMD < /tmp/dhcp_static.txt || log "DHCP 静态分配配置有警告，继续"
+log "注意：SoftEther L2TP 使用 DHCP 自动分配 IP，不支持固定 IP 分配"
+log "PPTP 支持固定 IP 分配（通过 chap-secrets）"
 
 systemctl restart vpnserver
 
@@ -268,22 +255,21 @@ WINEOF
 log "${GREEN}所有组件部署完成！${NC}"
 cat << EOF
 ==========================================
-✅ 双 VPN 服务部署成功 + 固定IP分配 + 跨协议互踢
+✅ 双 VPN 服务部署成功 + PPTP固定IP分配 + 跨协议互踢
 ==========================================
 服务器 IP: $SERVER_IP
 网关: $SERVER_GATEWAY
 用户名: user1 ~ user200
 密码: $FIXED_PASSWORD
-固定IP: user1 -> 10.0.10.2, user2 -> 10.0.10.3, ..., user200 -> 10.0.10.201
 
 📌 L2TP/IPsec (SoftEther):
    服务器地址: $SERVER_IP
    预共享密钥: $FIXED_PASSWORD
-   用户IP已固定（通过UserSet /IP）
+   IP分配: DHCP 自动分配 (10.0.10.202-250)
 
 📌 PPTP (pptpd):
    服务器地址: $SERVER_IP
-   用户IP已固定（通过chap-secrets + remoteip范围）
+   固定IP分配: user1 -> 10.0.10.2, user2 -> 10.0.10.3, ..., user200 -> 10.0.10.201
 
 📌 跨协议互踢功能已启用（同一用户不能同时通过PPTP和L2TP登录）
 
