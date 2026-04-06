@@ -57,9 +57,6 @@ iface $DEFAULT_IF inet static
     dns-nameservers 8.8.8.8 1.1.1.1
 EOF
 
-systemctl restart networking || log "网络重启可能需手动检查"
-sleep 2
-
 # ==================== 3. 内核参数 ====================
 log "启用 IP 转发并禁用反向路径过滤"
 cat >> /etc/sysctl.conf << EOF
@@ -277,5 +274,9 @@ cat << EOF
 ==========================================
 建议重启服务器: reboot
 EOF
+
+log "重启网络服务以应用静态 IP 配置..."
+systemctl restart networking || log "网络重启可能需手动检查"
+sleep 2
 
 log "安装结束。建议执行 reboot 重启服务器以使所有配置完全生效。"
