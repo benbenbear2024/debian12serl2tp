@@ -1,9 +1,37 @@
 #!/bin/bash
 
-MIHOMO_VERSION="v1.19.22"
 INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="/etc/mihomo"
 LOG_DIR="/var/log/mihomo"
+
+# 获取最新版本号
+get_latest_version() {
+    local mirror_index=0
+    local max_retries=3
+    
+    while [ $mirror_index -lt ${#GITHUB_MIRRORS[@]} ]; do
+        local mirror="${GITHUB_MIRRORS[$mirror_index]}"
+        local api_url="${mirror}https://api.github.com/repos/MetaCubeX/mihomo/releases/latest"
+        
+        log_info "尝试从 $mirror 获取最新版本..."
+        
+        for ((i=1; i<=$max_retries; i++)); do
+            local version=$(wget -q -O - --timeout=30 --no-check-certificate "$api_url" | grep -oP '"tag_name":\s*"\K[^"]+')
+            if [ -n "$version" ]; then
+                log_info "获取到最新版本: $version"
+                echo "$version"
+                return 0
+            fi
+            sleep 3
+        done
+        
+        mirror_index=$((mirror_index + 1))
+    done
+    
+    log_error "无法获取最新版本号，使用默认版本 v1.19.22"
+    echo "v1.19.22"
+    return 1
+}
 
 GITHUB_MIRRORS=(
     "https://ghfast.top/"
@@ -117,6 +145,9 @@ download_mihomo() {
     local os=$(detect_os)
     local filename
     
+    # 获取最新版本号
+    local MIHOMO_VERSION=$(get_latest_version)
+    
     if [ "$arch" = "amd64" ]; then
         filename="mihomo-linux-${arch}-compatible-${MIHOMO_VERSION}.gz"
     else
@@ -163,34 +194,50 @@ create_config() {
     if [ ! -f "${CONFIG_DIR}/config.yaml" ]; then
         cat > "${CONFIG_DIR}/config.yaml" << 'EOF'
 mixed-port: 7890
-redir-port: 7892
-tproxy-port: 7893
-authentication: [""]
+# 如不需要透明代理可注释
+redir-port: 7892  
+# tproxy-port: 7893
 allow-lan: true
 mode: rule
 log-level: info
 ipv6: true
-external-controller: :9999
+external-controller: 0.0.0.0:9999
 external-ui: ui
-external-ui-url: "https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip"
-secret: "88888888"
-        
-tun: {enable: true, stack: system, device: utun, auto-route: true, dns-hijack: ["tcp://8.8.8.8:53", "8.8.8.8:53"]}
-experimental: {ignore-resolve-fail: true, interface-name: en0}
+secret: ""   # 建议添加
+
+tun:
+  enable: true
+  stack: gvisor          # 或 mixed
+  auto-route: true
+  # device: tun://mihomo # Linux 下可省略或指定具体设备
+  dns-hijack:
+    - any:53
+    - tcp://any:53
+
 dns:
-    enable: true
-    ipv6: false
-    listen: 0.0.0.0:53
-    enhanced-mode: fake-ip
-    fake-ip-range: 198.18.0.1/16
-    use-hosts: true
-    default-nameserver: [223.5.5.5, 119.29.29.29,127.0.0.1:53]
-    nameserver: ['https://dns.alidns.com/dns-query', 'https://doh.pub/dns-query',127.0.0.1:53]
-    fallback: ['https://dns.google/dns-query', 'https://1.1.1.1/dns-query', 'https://dns.cloudflare.com/dns-query',8.8.8.8]
-    fallback-filter: { geoip: true, geoip-code: CN, ipcidr: [240.0.0.0/4, 0.0.0.0/32] }
-    fake-ip-filter: ['*.lan', '*.local', localhost.ptlogin2.qq.com]
+  enable: true
+  listen: 0.0.0.0:53
+  enhanced-mode: fake-ip
+  nameserver:
+    - https://dns.alidns.com/dns-query
+    - https://doh.pub/dns-query
+    # 移除 127.0.0.1:53
+  fallback:
+    - https://dns.google/dns-query
+    - https://1.1.1.1/dns-query
+    - tls://1.0.0.1:853
+  default-nameserver:
+    - 223.5.5.5
+    - 119.29.29.29
+    # 移除 127.0.0.1:53
+  fake-ip-filter:
+    - '*.lan'
+    - '*.local'
+    - localhost.ptlogin2.qq.com
+
 store-selected: true
 find-process-mode: "off"
+# 删除 authentication 字段或提供有效凭据
 
 rules:
     - SRC-IP-CIDR,10.0.10.2/32,Name1
@@ -207,14 +254,14 @@ proxies:
     - {name: 'Name1', rename: '🇭🇰香港-01 T 1.0x', type: trojan, server: productandservice.infralinkplus.com, port: 27101, password: edbdb7f9-6b83-4d54-c39e-0fc5e6533c72, udp: true, skip-cert-verify: true, sni: claude.1maxai.com, network: tcp}
     - {name: 'Name2', rename: '🇭🇰香港-02 T 1.0x', type: trojan, server: productandservice.infralinkplus.com, port: 27102, password: edbdb7f9-6b83-4d54-c39e-0fc5e6533c72, udp: true, skip-cert-verify: true, sni: claude.1maxai.com, network: tcp}
     - {name: 'Name3', rename: '🇭🇰香港-03 S 1.0x 时段2-7 0.5x', type: ss, server: productandservice.infralinkplus.com, port: 55201, password: 'MGU2Nzk1ZjI4MjNlYzk4Yw==:ZWRiZGI3ZjktNmI4My00ZA==', udp: true, cipher: 2022-blake3-aes-128-gcm}
-    - {name: 'Name4', rename: '🇭🇰香港-06 H 0.1x', type: hysteria2, server: records.hy.ecmtxt.com, port: 10443, password: edbdb7f9-6b83-4d54-c39e-0fc5e6533c72, skip-cert-verify: true, sni: records.hy.ecmtxt.com, up: 30, down: 30, hop-interval: 60}
-    - {name: 'Name5', rename: '🇭🇰香港-07 H 0.1x', type: hysteria2, server: records.hk01.ecmtxt.com, port: 10564, password: edbdb7f9-6b83-4d54-c39e-0fc5e6533c72, skip-cert-verify: true, sni: records.hk01.ecmtxt.com, up: 30, down: 30, hop-interval: 60}
+    - {name: 'Name4', rename: '🇭🇰香港-04 H 0.1x', type: hysteria2, server: records.hk02.ecmtxt.com, port: 10437, password: edbdb7f9-6b83-4d54-c39e-0fc5e6533c72, skip-cert-verify: true, sni: records.hy.ecmtxt.com, up: 30, down: 30, hop-interval: 60}
+    - {name: 'Name5', rename: '🇭🇰香港-06 H 0.1x', type: hysteria2, server: records.hy.ecmtxt.com, port: 10025, password: edbdb7f9-6b83-4d54-c39e-0fc5e6533c72, skip-cert-verify: true, sni: records.hy.ecmtxt.com, up: 30, down: 30, hop-interval: 60}
     - {name: 'Name6', rename: '🇯🇵日本-01 S 1.0x', type: ss, server: productandservice.infralinkplus.com, port: 27001, password: 'MGU2Nzk1ZjI4MjNlYzk4Yw==:ZWRiZGI3ZjktNmI4My00ZA==', udp: true, cipher: 2022-blake3-aes-128-gcm}
     - {name: 'Name7', rename: '🇯🇵日本-02 S 1.0x', type: ss, server: productandservice.infralinkplus.com, port: 27002, password: 'MGU2Nzk1ZjI4MjNlYzk4Yw==:ZWRiZGI3ZjktNmI4My00ZA==', udp: true, cipher: 2022-blake3-aes-128-gcm}
     - {name: 'Name8', rename: '🇯🇵日本-03 S 1.0x', type: ss, server: productandservice.infralinkplus.com, port: 22271, password: 'MGU2Nzk1ZjI4MjNlYzk4Yw==:ZWRiZGI3ZjktNmI4My00ZA==', udp: true, cipher: 2022-blake3-aes-128-gcm}
-    - {name: 'Name9', rename: '🇯🇵日本-04 S 1.0x', type: ss, server: productandservice.infralinkplus.com, port: 22269, password: 'MGU2Nzk1ZjI4MjNlYzk4Yw==:ZWRiZGI3ZjktNmI4My00ZA==', udp: true, cipher: 2022-blake3-aes-128-gcm}
+    - {name: 'Name9', rename: '🇯🇵日本-04 H 0.1x', type: hysteria2, server: records.jp02.ecmtxt.com, port: 10404, password: edbdb7f9-6b83-4d54-c39e-0fc5e6533c72, skip-cert-verify: true, sni: vgraxiw73sj1.sdkdns.vip, up: 30, down: 30, hop-interval: 60}
     - {name: 'Name10', rename: '🇯🇵日本-05 H 0.1x', type: hysteria2, server: records.jp01.ecmtxt.com, port: 10443, password: edbdb7f9-6b83-4d54-c39e-0fc5e6533c72, skip-cert-verify: true, sni: vgraxiw73sj1.sdkdns.vip, up: 30, down: 30, hop-interval: 60}
-   
+    
 
 EOF
         log_info "配置文件创建成功: ${CONFIG_DIR}/config.yaml"
@@ -293,13 +340,16 @@ check_installation() {
 }
 
 print_info() {
+    # 获取已安装的版本号
+    local installed_version=$(${INSTALL_DIR}/mihomo -v 2>/dev/null || echo "未知")
+    
     echo ""
     echo "=========================================="
     echo "Mihomo 安装完成"
     echo "=========================================="
     echo ""
     echo "安装信息:"
-    echo "  - 版本: $MIHOMO_VERSION"
+    echo "  - 版本: $installed_version"
     echo "  - 安装目录: $INSTALL_DIR"
     echo "  - 配置目录: $CONFIG_DIR"
     echo "  - 日志目录: $LOG_DIR"
@@ -312,13 +362,13 @@ print_info() {
     echo "  - 查看日志: journalctl -u mihomo -f"
     echo ""
     echo "配置文件: ${CONFIG_DIR}/config.yaml"
-    echo "控制面板: http://127.0.0.1:9090"
+    echo "控制面板: http://127.0.0.1:9999"
     echo "代理端口: 7890 (HTTP/SOCKS5)"
     echo ""
     echo "重要提示:"
-    echo "  1. 服务已设置为开机启动，但未立即运行"
-    echo "  2. 请先编辑配置文件添加代理节点"
-    echo "  3. 配置完成后执行: systemctl start mihomo"
+    echo "  1. 服务已设置为开机启动"
+    echo "  2. 配置文件已生成，包含默认代理节点"
+    echo "  3. 如需修改配置，请编辑: ${CONFIG_DIR}/config.yaml"
     echo "  4. 重启服务器后服务会自动启动"
     echo ""
 }

@@ -15,6 +15,7 @@ echo "同步系统时间..."
 timedatectl set-timezone Asia/Shanghai
 timedatectl set-ntp true
 systemctl restart systemd-timesyncd
+sleep 12s
 echo "时间同步完成"
 echo "当前时间: $(date)"
 echo ""
