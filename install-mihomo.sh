@@ -477,11 +477,27 @@ main() {
         local zashboard_zip="${CONFIG_DIR}/dist-firasans-only.zip"
         if download_file "$zashboard_url" "$zashboard_zip" 0; then
             if bsdtar -xf "$zashboard_zip" -C "${CONFIG_DIR}"; then
-                mv "${CONFIG_DIR}/dist-firasans-only" "${CONFIG_DIR}/ui"
+                if [ -d "${CONFIG_DIR}/dist-firasans-only" ]; then
+                    mv "${CONFIG_DIR}/dist-firasans-only" "${CONFIG_DIR}/ui"
+                elif [ -d "${CONFIG_DIR}/dist" ]; then
+                    mv "${CONFIG_DIR}/dist" "${CONFIG_DIR}/ui"
+                else
+                    rm "$zashboard_zip"
+                    log_error "下载 zashboard 失败，将使用默认界面"
+                    return
+                fi
                 rm "$zashboard_zip"
                 log_info "zashboard 下载成功"
             elif unzip "$zashboard_zip" -d "${CONFIG_DIR}"; then
-                mv "${CONFIG_DIR}/dist-firasans-only" "${CONFIG_DIR}/ui"
+                if [ -d "${CONFIG_DIR}/dist-firasans-only" ]; then
+                    mv "${CONFIG_DIR}/dist-firasans-only" "${CONFIG_DIR}/ui"
+                elif [ -d "${CONFIG_DIR}/dist" ]; then
+                    mv "${CONFIG_DIR}/dist" "${CONFIG_DIR}/ui"
+                else
+                    rm "$zashboard_zip"
+                    log_error "下载 zashboard 失败，将使用默认界面"
+                    return
+                fi
                 rm "$zashboard_zip"
                 log_info "zashboard 下载成功（使用 unzip）"
             else
