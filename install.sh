@@ -29,6 +29,15 @@ else
   echo "使用用户指定的服务器 IP 地址: $SERVER_IP"
 fi
 
+echo "请输入网络网关地址（例如: 192.168.8.1）:"
+read -p "网络网关地址: " GATEWAY_IP
+if [ -z "$GATEWAY_IP" ]; then
+  GATEWAY_IP="10.0.10.1"
+  echo "使用默认网络网关地址: $GATEWAY_IP"
+else
+  echo "使用用户指定的网络网关地址: $GATEWAY_IP"
+fi
+
 echo "\n是否安装防火墙规则？"
 echo "1. 是（推荐）"
 echo "2. 否"
@@ -375,7 +384,7 @@ iface lo inet loopback
 auto $DEFAULT_IF
 iface $DEFAULT_IF inet static
     address $SERVER_IP/24
-    gateway 10.0.10.1
+    gateway $GATEWAY_IP
     dns-nameservers 8.8.8.8 1.1.1.1
 EOF
 echo "网络配置文件已创建，内容如下:"
