@@ -463,14 +463,19 @@ main() {
         
         # 下载 MMDB 文件
         log_info "下载 MMDB 文件..."
-        if ! wget -qO "${CONFIG_DIR}/geoip.metadb" "$MIRROR/github.com/MetaCubeX/meta-rules-dat/releases/latest/download/geoip.metadb"; then
+        local mmdb_url="https://github.com/MetaCubeX/meta-rules-dat/releases/latest/download/geoip.metadb"
+        local mmdb_output="${CONFIG_DIR}/geoip.metadb"
+        if download_file "$mmdb_url" "$mmdb_output" 0; then
+            log_info "MMDB 文件下载成功"
+        else
             log_error "下载 MMDB 文件失败，将使用默认配置"
         fi
         
         # 下载 zashboard
         log_info "下载 zashboard..."
+        local zashboard_url="https://github.com/Zephyruso/zashboard/releases/latest/download/dist-firasans-only.zip"
         local zashboard_zip="${CONFIG_DIR}/dist-firasans-only.zip"
-        if wget -qO "$zashboard_zip" "$MIRROR/github.com/Zephyruso/zashboard/releases/latest/download/dist-firasans-only.zip"; then
+        if download_file "$zashboard_url" "$zashboard_zip" 0; then
             if bsdtar -xf "$zashboard_zip" -C "${CONFIG_DIR}"; then
                 mv "${CONFIG_DIR}/dist-firasans-only" "${CONFIG_DIR}/ui"
                 rm "$zashboard_zip"
