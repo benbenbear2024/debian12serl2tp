@@ -9,6 +9,12 @@ get_latest_version() {
     local mirror_index=0
     local max_retries=3
     
+    # 直接使用默认版本，避免网络问题
+    local default_version="v1.19.23"
+    log_info "使用默认版本: $default_version"
+    echo "$default_version"
+    return 0
+    
     while [ $mirror_index -lt ${#GITHUB_MIRRORS[@]} ]; do
         local mirror="${GITHUB_MIRRORS[$mirror_index]}"
         local api_url="${mirror}https://api.github.com/repos/MetaCubeX/mihomo/releases/latest"
@@ -16,7 +22,10 @@ get_latest_version() {
         log_info "尝试从 $mirror 获取最新版本..."
         
         for ((i=1; i<=$max_retries; i++)); do
-            local version=$(wget -q -O - --timeout=30 --no-check-certificate "$api_url" | grep -oP '"tag_name":\s*"\K[^"]+')
+            # 静默获取版本号，不输出到终端
+            local version=$(wget -q -O - --timeout=30 --no-check-certificate "$api_url" 2>/dev/null | grep -oP '"tag_name":\s*"\K[^"]+' 2>/dev/null)
+            # 清理版本号，确保只包含字母和数字
+            version=$(echo "$version" | sed 's/[^a-zA-Z0-9.-]//g' | tr -d '\n' | tr -d '\r')
             if [ -n "$version" ]; then
                 log_info "获取到最新版本: $version"
                 echo "$version"
@@ -118,15 +127,19 @@ download_file() {
     fi
     
     local mirror="${GITHUB_MIRRORS[$mirror_index]}"
+    # 构建正确的下载 URL
     local download_url="${mirror}${url}"
     
     log_info "尝试使用镜像: $mirror"
     log_info "下载地址: $download_url"
     
+    # 确保输出目录存在
+    mkdir -p "$(dirname "$output")"
+    
     # 尝试下载，最多重试 3 次
     for ((i=1; i<=$max_retries; i++)); do
         log_info "第 $i 次尝试下载..."
-        if wget -q --show-progress --timeout=30 --tries=1 --no-check-certificate -O "$output" "$download_url"; then
+        if wget -q --timeout=30 --tries=1 --no-check-certificate -O "$output" "$download_url"; then
             log_info "下载成功"
             return 0
         else
@@ -145,8 +158,9 @@ download_mihomo() {
     local os=$(detect_os)
     local filename
     
-    # 获取最新版本号
-    local MIHOMO_VERSION=$(get_latest_version)
+    # 获取最新版本号（只获取版本号，不包含日志）
+    local MIHOMO_VERSION="v1.19.23"
+    log_info "使用版本: $MIHOMO_VERSION"
     
     if [ "$arch" = "amd64" ]; then
         filename="mihomo-linux-${arch}-compatible-${MIHOMO_VERSION}.gz"
@@ -207,39 +221,46 @@ secret: ""   # 建议添加
 
 tun:
   enable: true
-  stack: gvisor          # 或 mixed
+  stack: mixed          # gvisor 或 mixed 或 system
   auto-route: true
+  auto-detect-interface: true
   # device: tun://mihomo # Linux 下可省略或指定具体设备
   dns-hijack:
-    - any:53
-    - tcp://any:53
+    - tcp://8.8.8.8:53
+    - 8.8.8.8:53
+  # 排除 VPN 相关流量，确保 L2TP/IPsec 连接正常
+  auto-route-exclude:
+    - 192.168.8.0/24
+  # 只路由 VPN 客户端流量
+  inet4-route-address:
+    - 10.0.10.0/24
 
 dns:
-  enable: true
-  listen: 0.0.0.0:53
-  enhanced-mode: fake-ip
-  nameserver:
-    - https://dns.alidns.com/dns-query
-    - https://doh.pub/dns-query
-    # 移除 127.0.0.1:53
-  fallback:
-    - https://dns.google/dns-query
-    - https://1.1.1.1/dns-query
-    - tls://1.0.0.1:853
-  default-nameserver:
-    - 223.5.5.5
-    - 119.29.29.29
-    # 移除 127.0.0.1:53
-  fake-ip-filter:
-    - '*.lan'
-    - '*.local'
-    - localhost.ptlogin2.qq.com
+    enable: true
+    ipv6: false
+    listen: 0.0.0.0:53
+    enhanced-mode: fake-ip
+    fake-ip-range: 198.18.0.1/16
+    use-hosts: true
+    default-nameserver: [223.5.5.5, 119.29.29.29,127.0.0.1:53]
+    nameserver: ['https://dns.alidns.com/dns-query', 'https://doh.pub/dns-query',127.0.0.1:53]
+    fallback: ['https://dns.google/dns-query', 'https://1.1.1.1/dns-query', 'https://dns.cloudflare.com/dns-query',8.8.8.8]
+    fallback-filter: { geoip: true, geoip-code: CN, ipcidr: [240.0.0.0/4, 0.0.0.0/32] }
+    fake-ip-filter: ['*.lan', '*.local', localhost.ptlogin2.qq.com]
 
 store-selected: true
 find-process-mode: "off"
 # 删除 authentication 字段或提供有效凭据
-
 rules:
+    # VPN 相关流量直接通过
+    - DST-PORT,500,DIRECT
+    - DST-PORT,4500,DIRECT
+    - DST-PORT,1701,DIRECT
+    - DST-PORT,1723,DIRECT
+    # - PROTOCOL,47,DIRECT
+    # 服务器本地流量直接通过
+    - SRC-IP-CIDR,10.0.10.1/32,DIRECT
+    # VPN 客户端流量使用代理（一个账号对应一个节点）
     - SRC-IP-CIDR,10.0.10.2/32,Name1
     - SRC-IP-CIDR,10.0.10.3/32,Name2
     - SRC-IP-CIDR,10.0.10.4/32,Name3
@@ -250,17 +271,29 @@ rules:
     - SRC-IP-CIDR,10.0.10.9/32,Name8
     - SRC-IP-CIDR,10.0.10.10/32,Name9
     - SRC-IP-CIDR,10.0.10.11/32,Name10
+    - SRC-IP-CIDR,10.0.10.12/32,Name11
+    - SRC-IP-CIDR,10.0.10.13/32,Name12
+    - SRC-IP-CIDR,10.0.10.14/32,Name13
+    - SRC-IP-CIDR,10.0.10.15/32,Name14
+    - SRC-IP-CIDR,10.0.10.16/32,Name15
+    # 默认规则：所有 VPN 客户端流量使用代理
+    - SRC-IP-CIDR,10.0.10.0/24,Name1
 proxies:
     - {name: 'Name1', rename: '🇭🇰香港-01 T 1.0x', type: trojan, server: productandservice.infralinkplus.com, port: 27101, password: edbdb7f9-6b83-4d54-c39e-0fc5e6533c72, udp: true, skip-cert-verify: true, sni: claude.1maxai.com, network: tcp}
     - {name: 'Name2', rename: '🇭🇰香港-02 T 1.0x', type: trojan, server: productandservice.infralinkplus.com, port: 27102, password: edbdb7f9-6b83-4d54-c39e-0fc5e6533c72, udp: true, skip-cert-verify: true, sni: claude.1maxai.com, network: tcp}
     - {name: 'Name3', rename: '🇭🇰香港-03 S 1.0x 时段2-7 0.5x', type: ss, server: productandservice.infralinkplus.com, port: 55201, password: 'MGU2Nzk1ZjI4MjNlYzk4Yw==:ZWRiZGI3ZjktNmI4My00ZA==', udp: true, cipher: 2022-blake3-aes-128-gcm}
-    - {name: 'Name4', rename: '🇭🇰香港-04 H 0.1x', type: hysteria2, server: records.hk02.ecmtxt.com, port: 10437, password: edbdb7f9-6b83-4d54-c39e-0fc5e6533c72, skip-cert-verify: true, sni: records.hy.ecmtxt.com, up: 30, down: 30, hop-interval: 60}
-    - {name: 'Name5', rename: '🇭🇰香港-06 H 0.1x', type: hysteria2, server: records.hy.ecmtxt.com, port: 10025, password: edbdb7f9-6b83-4d54-c39e-0fc5e6533c72, skip-cert-verify: true, sni: records.hy.ecmtxt.com, up: 30, down: 30, hop-interval: 60}
-    - {name: 'Name6', rename: '🇯🇵日本-01 S 1.0x', type: ss, server: productandservice.infralinkplus.com, port: 27001, password: 'MGU2Nzk1ZjI4MjNlYzk4Yw==:ZWRiZGI3ZjktNmI4My00ZA==', udp: true, cipher: 2022-blake3-aes-128-gcm}
-    - {name: 'Name7', rename: '🇯🇵日本-02 S 1.0x', type: ss, server: productandservice.infralinkplus.com, port: 27002, password: 'MGU2Nzk1ZjI4MjNlYzk4Yw==:ZWRiZGI3ZjktNmI4My00ZA==', udp: true, cipher: 2022-blake3-aes-128-gcm}
-    - {name: 'Name8', rename: '🇯🇵日本-03 S 1.0x', type: ss, server: productandservice.infralinkplus.com, port: 22271, password: 'MGU2Nzk1ZjI4MjNlYzk4Yw==:ZWRiZGI3ZjktNmI4My00ZA==', udp: true, cipher: 2022-blake3-aes-128-gcm}
-    - {name: 'Name9', rename: '🇯🇵日本-04 H 0.1x', type: hysteria2, server: records.jp02.ecmtxt.com, port: 10404, password: edbdb7f9-6b83-4d54-c39e-0fc5e6533c72, skip-cert-verify: true, sni: vgraxiw73sj1.sdkdns.vip, up: 30, down: 30, hop-interval: 60}
-    - {name: 'Name10', rename: '🇯🇵日本-05 H 0.1x', type: hysteria2, server: records.jp01.ecmtxt.com, port: 10443, password: edbdb7f9-6b83-4d54-c39e-0fc5e6533c72, skip-cert-verify: true, sni: vgraxiw73sj1.sdkdns.vip, up: 30, down: 30, hop-interval: 60}
+    - {name: 'Name4', rename: '🇭🇰香港-03 V 1.0x 时段2-7 0.5x', type: vless, server: productandservice.infralinkplus.com, port: 21008, udp: true, sni: www.microsoft.com, network: tcp, cipher: auto, uuid: edbdb7f9-6b83-4d54-c39e-0fc5e6533c72, alterId: 0, flow: xtls-rprx-vision, servername: www.microsoft.com, client-fingerprint: chrome, tls: true, reality-opts: {public-key: __VLf1k2d2rSf2oiNqthbgALzhG_Oz1YZHBeWnJIEDk, short-id: 17f1e3d3ab81b8, server-name: www.microsoft.com}}
+    - {name: 'Name5', rename: '🇭🇰香港-04 H 0.1x', type: hysteria2, server: records.hk02.ecmtxt.com, port: 18779, password: edbdb7f9-6b83-4d54-c39e-0fc5e6533c72, skip-cert-verify: true, sni: records.hy.ecmtxt.com, up: 30, down: 30, hop-interval: 60}
+    - {name: 'Name6', rename: '🇭🇰香港-06 H 0.1x', type: hysteria2, server: records.hy.ecmtxt.com, port: 11572, password: edbdb7f9-6b83-4d54-c39e-0fc5e6533c72, skip-cert-verify: true, sni: records.hy.ecmtxt.com, up: 30, down: 30, hop-interval: 60}
+    - {name: 'Name7', rename: '🇯🇵日本-01 S 1.0x', type: ss, server: productandservice.infralinkplus.com, port: 27001, password: 'MGU2Nzk1ZjI4MjNlYzk4Yw==:ZWRiZGI3ZjktNmI4My00ZA==', udp: true, cipher: 2022-blake3-aes-128-gcm}
+    - {name: 'Name8', rename: '🇯🇵日本-02 S 1.0x', type: ss, server: productandservice.infralinkplus.com, port: 27002, password: 'MGU2Nzk1ZjI4MjNlYzk4Yw==:ZWRiZGI3ZjktNmI4My00ZA==', udp: true, cipher: 2022-blake3-aes-128-gcm}
+    - {name: 'Name9', rename: '🇯🇵日本-03 S 1.0x', type: ss, server: productandservice.infralinkplus.com, port: 22271, password: 'MGU2Nzk1ZjI4MjNlYzk4Yw==:ZWRiZGI3ZjktNmI4My00ZA==', udp: true, cipher: 2022-blake3-aes-128-gcm}
+    - {name: 'Name10', rename: '🇯🇵日本-04 H 0.1x', type: hysteria2, server: records.jp02.ecmtxt.com, port: 15951, password: edbdb7f9-6b83-4d54-c39e-0fc5e6533c72, skip-cert-verify: true, sni: vgraxiw73sj1.sdkdns.vip, up: 30, down: 30, hop-interval: 60}
+    - {name: 'Name11', rename: '🇯🇵日本-05 H 0.1x', type: hysteria2, server: records.jp01.ecmtxt.com, port: 10443, password: edbdb7f9-6b83-4d54-c39e-0fc5e6533c72, skip-cert-verify: true, sni: vgraxiw73sj1.sdkdns.vip, up: 30, down: 30, hop-interval: 60}
+    - {name: 'Name12', rename: '🇹🇼台湾-01 T 1.0x', type: trojan, server: productandservice.infralinkplus.com, port: 27201, password: edbdb7f9-6b83-4d54-c39e-0fc5e6533c72, udp: true, skip-cert-verify: true, sni: claude.1maxai.com, network: tcp}
+    - {name: 'Name13', rename: '🇹🇼台湾-02 S 1.0x', type: ss, server: productandservice.infralinkplus.com, port: 27202, password: 'MGU2Nzk1ZjI4MjNlYzk4Yw==:ZWRiZGI3ZjktNmI4My00ZA==', udp: true, cipher: 2022-blake3-aes-128-gcm}
+    - {name: 'Name14', rename: '🇸🇬新加坡-01 S 1.0x', type: ss, server: productandservice.infralinkplus.com, port: 27401, password: 'MGU2Nzk1ZjI4MjNlYzk4Yw==:ZWRiZGI3ZjktNmI4My00ZA==', udp: true, cipher: 2022-blake3-aes-128-gcm}
+    - {name: 'Name15', rename: '🇸🇬新加坡-02 S 1.0x', type: ss, server: productandservice.infralinkplus.com, port: 42881, password: 'MGU2Nzk1ZjI4MjNlYzk4Yw==:ZWRiZGI3ZjktNmI4My00ZA==', udp: true, cipher: 2022-blake3-aes-128-gcm}
     
 
 EOF
@@ -394,6 +427,11 @@ main() {
         apt-get install -y gzip
     fi
     
+    if ! command -v bsdtar &> /dev/null; then
+        log_info "安装 bsdtar..."
+        apt-get install -y bsdtar
+    fi
+    
     download_mihomo || exit 1
     
     create_directories
@@ -414,6 +452,18 @@ main() {
     
     if [ "$CREATE_CONFIG" = "yes" ]; then
         create_config
+        
+        # 下载 MMDB 文件
+        log_info "下载 MMDB 文件..."
+        if ! wget -qO "${CONFIG_DIR}/geoip.metadb" "$MIRROR/github.com/MetaCubeX/meta-rules-dat/releases/latest/download/geoip.metadb"; then
+            log_error "下载 MMDB 文件失败，将使用默认配置"
+        fi
+        
+        # 下载 zashboard
+        log_info "下载 zashboard..."
+        if ! wget -qO- "$MIRROR/github.com/Zephyruso/zashboard/releases/latest/download/dist-firasans-only.zip" | bsdtar -xf - -C "${CONFIG_DIR}" && mv "${CONFIG_DIR}/dist-firasans-only" "${CONFIG_DIR}/ui"; then
+            log_error "下载 zashboard 失败，将使用默认界面"
+        fi
     else
         log_info "跳过配置文件生成，请手动配置 ${CONFIG_DIR}/config.yaml"
     fi

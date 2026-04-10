@@ -137,7 +137,7 @@ umask 077
   echo '# CHAP secrets — PPTP / L2TP 账号相同'
   echo '# client  server  secret  IP'
   for i in $(seq 1 200); do
-    ip=10.0.10.$i
+    ip=10.0.10.$((i+1))
     echo "user$i * 88888888 $ip"
   done
 } > "$CHAP.new"
@@ -246,18 +246,45 @@ if [ "$FIREWALL_INSTALL" = "yes" ]; then
   
   iptables -I FORWARD 1 -d 10.0.10.254 -j ACCEPT
   iptables -A FORWARD -s 10.0.10.0/24 -d 10.0.10.0/24 -j DROP
-
-
+  # 允许 VPN 客户端流量转发到外部网络
+  iptables -A FORWARD -s 10.0.10.0/24 -j ACCEPT
+  
   WAN_IF=$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')
   if [ -n "$WAN_IF" ]; then
-    iptables -t nat -A POSTROUTING -o "$WAN_IF" -j MASQUERADE
-    echo "已添加 NAT 转发规则（出口网卡: $WAN_IF）"
+    # 为 VPN 客户端流量添加 NAT 规则，通过 mihomo 代理
+    iptables -t nat -A POSTROUTING -o "utun" -s 10.0.10.0/24 -j MASQUERADE
+    echo "已添加 VPN 客户端流量 NAT 规则（出口网卡: utun）"
+    
+    # 为物理接口添加 NAT 规则，确保 PPTP/L2TP 连接能够正常建立
+    # VPN 相关流量通过物理接口，其他流量通过 mihomo
+    iptables -t nat -A POSTROUTING -o "$WAN_IF" -p udp --dport 500 -j MASQUERADE
+    iptables -t nat -A POSTROUTING -o "$WAN_IF" -p udp --dport 4500 -j MASQUERADE
+    iptables -t nat -A POSTROUTING -o "$WAN_IF" -p udp --dport 1701 -j MASQUERADE
+    iptables -t nat -A POSTROUTING -o "$WAN_IF" -p tcp --dport 1723 -j MASQUERADE
+    echo "已添加物理接口 NAT 规则（出口网卡: $WAN_IF，VPN 相关端口）"
   fi
 
   echo "保存防火墙规则..."
   iptables-save > /etc/iptables/rules.v4
   iptables-restore < /etc/iptables/rules.v4
   echo "防火墙规则已立即生效"
+  
+  # 添加路由规则，确保 L2TP/IPsec 流量通过物理接口
+  WAN_IF=$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')
+  if [ -n "$WAN_IF" ]; then
+    # 为 L2TP/IPsec 流量添加路由规则
+    ip route add table 100 default dev "$WAN_IF" 2>/dev/null || true
+    ip rule add fwmark 1 table 100 2>/dev/null || true
+    
+    # 为 L2TP/IPsec 流量添加标记
+    iptables -t mangle -A PREROUTING -p udp --dport 500 -j MARK --set-mark 1
+    iptables -t mangle -A PREROUTING -p udp --dport 4500 -j MARK --set-mark 1
+    iptables -t mangle -A PREROUTING -p udp --dport 1701 -j MARK --set-mark 1
+    iptables -t mangle -A PREROUTING -p esp -j MARK --set-mark 1
+    iptables -t mangle -A PREROUTING -p ah -j MARK --set-mark 1
+    
+    echo "已添加 L2TP/IPsec 路由规则"
+  fi
 else
   echo "跳过防火墙规则配置"
   echo "添加 noipx 选项到 PPTP 配置..."

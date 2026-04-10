@@ -12,7 +12,6 @@ lock
 hide-password
 modem
 proxyarp
-nodefaultroute
 mtu 1400
 mru 1400
 noccp

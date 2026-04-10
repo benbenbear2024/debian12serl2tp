@@ -7,7 +7,6 @@ noccp
 auth
 mtu 1400
 mru 1400
-nodefaultroute
 proxyarp
 silent
 modem
