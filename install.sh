@@ -250,8 +250,8 @@ if [ "$FIREWALL_INSTALL" = "yes" ]; then
   iptables -A FORWARD -s 10.0.10.0/24 -j ACCEPT
   
   # 为 VPN 客户端流量添加 NAT 规则，通过 mihomo 代理
-  iptables -t nat -A POSTROUTING -o "tun0" -s 10.0.10.0/24 -j MASQUERADE
-  echo "已添加 VPN 客户端流量 NAT 规则（出口网卡: tun0）"
+  iptables -t nat -A POSTROUTING -o "Meta" -s 10.0.10.0/24 -j MASQUERADE
+  echo "已添加 VPN 客户端流量 NAT 规则（出口网卡: Meta）"
   
   # 为物理接口添加 NAT 规则，确保 PPTP/L2TP 连接能够正常建立
   # VPN 相关流量通过物理接口，其他流量通过 mihomo
