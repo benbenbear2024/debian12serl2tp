@@ -291,6 +291,7 @@ if [ "$FIREWALL_INSTALL" = "yes" ]; then
   echo "添加 noipx 选项到 L2TP 配置..."
   echo "noipx" >> /etc/ppp/options.xl2tpd
   echo "已添加 noipx 选项，禁止 VPN 客户端之间的 IPX 协议通信"
+fi
 
 if [ "$DAEMON_INSTALL" = "yes" ]; then
   echo "创建 VPN 服务守护脚本..."
