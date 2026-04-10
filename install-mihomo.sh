@@ -424,12 +424,20 @@ main() {
     
     if ! command -v gunzip &> /dev/null; then
         log_info "安装 gzip..."
+        apt-get update -qq
         apt-get install -y gzip
     fi
     
     if ! command -v bsdtar &> /dev/null; then
         log_info "安装 bsdtar..."
+        apt-get update -qq
         apt-get install -y bsdtar
+    fi
+    
+    if ! command -v unzip &> /dev/null; then
+        log_info "安装 unzip..."
+        apt-get update -qq
+        apt-get install -y unzip
     fi
     
     download_mihomo || exit 1
@@ -461,7 +469,21 @@ main() {
         
         # 下载 zashboard
         log_info "下载 zashboard..."
-        if ! wget -qO- "$MIRROR/github.com/Zephyruso/zashboard/releases/latest/download/dist-firasans-only.zip" | bsdtar -xf - -C "${CONFIG_DIR}" && mv "${CONFIG_DIR}/dist-firasans-only" "${CONFIG_DIR}/ui"; then
+        local zashboard_zip="${CONFIG_DIR}/dist-firasans-only.zip"
+        if wget -qO "$zashboard_zip" "$MIRROR/github.com/Zephyruso/zashboard/releases/latest/download/dist-firasans-only.zip"; then
+            if bsdtar -xf "$zashboard_zip" -C "${CONFIG_DIR}"; then
+                mv "${CONFIG_DIR}/dist-firasans-only" "${CONFIG_DIR}/ui"
+                rm "$zashboard_zip"
+                log_info "zashboard 下载成功"
+            elif unzip "$zashboard_zip" -d "${CONFIG_DIR}"; then
+                mv "${CONFIG_DIR}/dist-firasans-only" "${CONFIG_DIR}/ui"
+                rm "$zashboard_zip"
+                log_info "zashboard 下载成功（使用 unzip）"
+            else
+                rm "$zashboard_zip"
+                log_error "下载 zashboard 失败，将使用默认界面"
+            fi
+        else
             log_error "下载 zashboard 失败，将使用默认界面"
         fi
     else
