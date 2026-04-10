@@ -252,8 +252,8 @@ if [ "$FIREWALL_INSTALL" = "yes" ]; then
   WAN_IF=$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')
   if [ -n "$WAN_IF" ]; then
     # 为 VPN 客户端流量添加 NAT 规则，通过 mihomo 代理
-    iptables -t nat -A POSTROUTING -o "utun" -s 10.0.10.0/24 -j MASQUERADE
-    echo "已添加 VPN 客户端流量 NAT 规则（出口网卡: utun）"
+    iptables -t nat -A POSTROUTING -o "$WAN_IF" -s 10.0.10.0/24 -j MASQUERADE
+    echo "已添加 VPN 客户端流量 NAT 规则（出口网卡: $WAN_IF）"
     
     # 为物理接口添加 NAT 规则，确保 PPTP/L2TP 连接能够正常建立
     # VPN 相关流量通过物理接口，其他流量通过 mihomo
@@ -285,14 +285,12 @@ if [ "$FIREWALL_INSTALL" = "yes" ]; then
     
     echo "已添加 L2TP/IPsec 路由规则"
   fi
-else
-  echo "跳过防火墙规则配置"
+
   echo "添加 noipx 选项到 PPTP 配置..."
   echo "noipx" >> /etc/ppp/options.pptpd
   echo "添加 noipx 选项到 L2TP 配置..."
   echo "noipx" >> /etc/ppp/options.xl2tpd
   echo "已添加 noipx 选项，禁止 VPN 客户端之间的 IPX 协议通信"
-fi
 
 if [ "$DAEMON_INSTALL" = "yes" ]; then
   echo "创建 VPN 服务守护脚本..."

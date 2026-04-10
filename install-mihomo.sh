@@ -223,7 +223,7 @@ tun:
   enable: true
   stack: mixed          # gvisor 或 mixed 或 system
   auto-route: true
-  auto-detect-interface: true
+  auto-detect-interface: true  
   # device: tun://mihomo # Linux 下可省略或指定具体设备
   dns-hijack:
     - tcp://8.8.8.8:53
@@ -231,6 +231,7 @@ tun:
   # 排除 VPN 相关流量，确保 L2TP/IPsec 连接正常
   auto-route-exclude:
     - 192.168.8.0/24
+    - 10.0.10.0/24
   # 只路由 VPN 客户端流量
   inet4-route-address:
     - 10.0.10.0/24
